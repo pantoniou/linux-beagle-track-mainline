@@ -773,22 +773,83 @@ EXPORT_SYMBOL(of_get_child_by_name);
 /**
  *	of_find_node_by_path - Find a node matching a full OF path
  *	@path:	The full path to match
+ *	@path: Either the full path to match, or if the path does not
+ *	       start with '/', the name of a property of the /aliases
+ *	       node (an alias).  In the case of an alias, the node
+ *	       matching the alias' value will be returned.
+ *
+ *	Valid paths:
+ *		/foo/bar	Full path
+ *		foo		Valid alias
+ *		foo/bar		Valid alias + relative path
  *
  *	Returns a node pointer with refcount incremented, use
  *	of_node_put() on it when done.
  */
 struct device_node *of_find_node_by_path(const char *path)
 {
-	struct device_node *np = of_allnodes;
+	struct device_node *np = NULL;
+	int len;
+	const char *p = NULL;
+	struct property *prop;
 	unsigned long flags;
 
+	/* under lock (not very nice) */
 	raw_spin_lock_irqsave(&devtree_lock, flags);
-	for (; np; np = np->allnext) {
-		if (np->full_name && (of_node_cmp(np->full_name, path) == 0)
-		    && of_node_get(np))
+
+	len = strlen(path);
+
+	/* path begins with an alias */
+	if (path[0] != '/') {
+
+		/* now find the relative path (if any)*/
+		p = strchr(path, '/');
+		if (p != NULL)
+			len = p - path;
+
+		/* of_aliases must not be NULL */
+		if (!of_aliases)
+			goto out;
+
+		/* find matching alias */
+		for_each_property_of_node(of_aliases, prop)
+			if (strlen(prop->name) == len &&
+					strncmp(prop->name, path, len) == 0)
+				break;
+
+		/* not found; bail */
+		if (prop == NULL)
+			goto out;
+
+		path = prop->value;
+	}
+
+	/* path lookup */
+	for_each_of_allnodes(np) {
+
+		if (!np->full_name)
+			continue;
+
+		if (p == NULL) {
+			/* full component */
+			if (strcasecmp(np->full_name, path) != 0)
+				continue;
+		} else {
+			/* last component (including '/') */
+			if (strncasecmp(np->full_name, path, len) != 0)
+				continue;
+
+			if (strcasecmp(np->full_name + len, p) != 0)
+				continue;
+		}
+
+		if (of_node_get(np))
 			break;
 	}
+
+out:
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
+
 	return np;
 }
 EXPORT_SYMBOL(of_find_node_by_path);
