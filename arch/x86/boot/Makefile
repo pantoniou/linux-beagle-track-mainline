@@ -181,3 +181,14 @@ bzlilo: $(obj)/bzImage
 install:
 	sh $(srctree)/$(src)/install.sh $(KERNELRELEASE) $(obj)/bzImage \
 		System.map "$(INSTALL_PATH)"
+
+include $(src)/Makefile.boot
+targets += $(dtb-y)
+
+# Rule to build device tree blobs
+$(obj)/%.dtb: $(src)/dts/%.dts FORCE
+	$(call if_changed_dep,dtc)
+
+$(obj)/dtbs: $(addprefix $(obj)/, $(dtb-y))
+
+clean-files := *.dtb
