@@ -244,6 +244,12 @@ PHONY += vdso_install
 vdso_install:
 	$(Q)$(MAKE) $(build)=arch/x86/vdso $@
 
+%.dtb:
+	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
+
+dtbs:
+	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
+
 archclean:
 	$(Q)rm -rf $(objtree)/arch/i386
 	$(Q)rm -rf $(objtree)/arch/x86_64
@@ -270,4 +276,5 @@ define archhelp
   echo  '                  FDARGS="..."  arguments for the booted kernel'
   echo  '                  FDINITRD=file initrd for the booted kernel'
   echo  '  kvmconfig	- Enable additional options for guest kernel support'
+  echo  '  dtbs         - Build device tree blobs for enabled boards'
 endef
