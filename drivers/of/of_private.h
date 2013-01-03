@@ -67,4 +67,18 @@ extern int __of_update_property(struct device_node *np,
 extern void __of_attach_node(struct device_node *np);
 extern void __of_detach_node(struct device_node *np);
 
+/**
+ * General utilities for working with live trees.
+ *
+ * All functions with two leading underscores operate
+ * without taking node references, so you either have to
+ * own the devtree lock or work on detached trees only.
+ */
+
+struct property *__of_copy_property(const struct property *prop,
+		gfp_t allocflags, unsigned long propflags);
+struct device_node *__of_create_empty_node(const char *name,
+		const char *type, const char *full_name,
+		phandle phandle, gfp_t allocflags, unsigned long nodeflags);
+
 #endif /* _LINUX_OF_PRIVATE_H */

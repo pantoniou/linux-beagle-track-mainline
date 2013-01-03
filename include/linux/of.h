@@ -206,6 +206,15 @@ static inline unsigned long of_read_ulong(const __be32 *cell, int size)
 #define OF_POPULATED	3 /* device already created for the node */
 #define OF_POPULATED_BUS	4 /* of_platform_populate recursed
 				   * to children of this node */
+#define OF_ALLOCNAME	5 /* name was kmalloc-ed */
+#define OF_ALLOCTYPE	6 /* type was kmalloc-ed */
+#define OF_ALLOCFULL	7 /* full_name was kmalloc-ed */
+#define OF_ALLOCVALUE	8 /* value was kmalloc-ed */
+
+#define OF_NODE_ALLOCALL \
+	((1 << OF_ALLOCNAME) | (1 << OF_ALLOCTYPE) | (1 << OF_ALLOCFULL))
+#define OF_PROP_ALLOCALL \
+	((1 << OF_ALLOCNAME) | (1 << OF_ALLOCVALUE))
 
 #define OF_IS_DYNAMIC(x) test_bit(OF_DYNAMIC, &x->_flags)
 #define OF_MARK_DYNAMIC(x) set_bit(OF_DYNAMIC, &x->_flags)
