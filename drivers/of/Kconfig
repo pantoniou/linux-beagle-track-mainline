@@ -78,4 +78,10 @@ config OF_RESERVED_MEM
 	help
 	  Helpers to allow for reservation of memory regions
 
+config OF_RESOLVE
+	bool
+	depends on OF && !SPARC
+	select OF_DYNAMIC
+	select OF_DEVICE
+
 endmenu # OF
