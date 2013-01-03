@@ -1119,4 +1119,20 @@ static inline int of_transaction_update_property(struct of_transaction *oft,
 			OF_RECONFIG_UPDATE_PROPERTY, np, prop);
 }
 
+/* illegal phandle value (set when unresolved) */
+#define OF_PHANDLE_ILLEGAL	0xdeadbeef
+
+#ifdef CONFIG_OF_RESOLVE
+
+int of_resolve(struct device_node *resolve);
+
+#else
+
+static inline int of_resolve(struct device_node *resolve)
+{
+	return -ENOTSUPP;
+}
+
+#endif
+
 #endif /* _LINUX_OF_H */
