@@ -204,6 +204,15 @@ static inline unsigned long of_read_ulong(const __be32 *cell, int size)
 #define OF_DYNAMIC	1 /* node and properties were allocated via kmalloc */
 #define OF_DETACHED	2 /* node has been detached from the device tree */
 #define OF_POPULATED	3 /* device already created for the node */
+#define OF_ALLOCNAME	4 /* name was kmalloc-ed */
+#define OF_ALLOCTYPE	5 /* type was kmalloc-ed */
+#define OF_ALLOCFULL	6 /* full_name was kmalloc-ed */
+#define OF_ALLOCVALUE	7 /* value was kmalloc-ed */
+
+#define OF_NODE_ALLOCALL \
+	((1 << OF_ALLOCNAME) | (1 << OF_ALLOCTYPE) | (1 << OF_ALLOCFULL))
+#define OF_PROP_ALLOCALL \
+	((1 << OF_ALLOCNAME) | (1 << OF_ALLOCVALUE))
 
 #define OF_IS_DYNAMIC(x) test_bit(OF_DYNAMIC, &x->_flags)
 #define OF_MARK_DYNAMIC(x) set_bit(OF_DYNAMIC, &x->_flags)
@@ -800,5 +809,47 @@ typedef void (*of_init_fn_1)(struct device_node *);
 		_OF_DECLARE(table, name, compat, fn, of_init_fn_1)
 #define OF_DECLARE_2(table, name, compat, fn) \
 		_OF_DECLARE(table, name, compat, fn, of_init_fn_2)
+
+/**
+ * General utilities for working with live trees.
+ *
+ * All functions with two leading underscores operate
+ * without taking node references, so you either have to
+ * own the devtree lock or work on detached trees only.
+ */
+
+#ifdef CONFIG_OF
+
+void __of_free_property(struct property *prop);
+void __of_free_tree(struct device_node *node);
+struct property *__of_copy_property(const struct property *prop,
+		gfp_t allocflags, unsigned long propflags);
+struct device_node *__of_create_empty_node( const char *name,
+		const char *type, const char *full_name,
+		phandle phandle, gfp_t allocflags, unsigned long nodeflags);
+
+#else /* !CONFIG_OF */
+
+#define __for_each_child_of_node(dn, chld) \
+	while (0)
+
+static inline void __of_free_property(struct property *prop) { }
+
+static inline void __of_free_tree(struct device_node *node) { }
+
+static inline struct property *__of_copy_property(const struct property *prop,
+		gfp_t allocflags, unsigned long propflags)
+{
+	return NULL;
+}
+
+static inline struct device_node *__of_create_empty_node( const char *name,
+		const char *type, const char *full_name,
+		phandle phandle, gfp_t allocflags, unsigned long nodeflags)
+{
+	return NULL;
+}
+
+#endif	/* !CONFIG_OF */
 
 #endif /* _LINUX_OF_H */
