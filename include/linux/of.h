@@ -852,4 +852,21 @@ static inline struct device_node *__of_create_empty_node( const char *name,
 
 #endif	/* !CONFIG_OF */
 
+
+/* illegal phandle value (set when unresolved) */
+#define OF_PHANDLE_ILLEGAL	0xdeadbeef
+
+#ifdef CONFIG_OF_RESOLVE
+
+int of_resolve(struct device_node *resolve);
+
+#else
+
+static inline int of_resolve(struct device_node *resolve)
+{
+	return -ENOTSUPP;
+}
+
+#endif
+
 #endif /* _LINUX_OF_H */
