@@ -23,6 +23,7 @@
 #include <linux/spinlock.h>
 #include <linux/topology.h>
 #include <linux/notifier.h>
+#include <linux/list.h>
 
 #include <asm/byteorder.h>
 #include <asm/errno.h>
@@ -880,6 +881,36 @@ int of_resolve(struct device_node *resolve);
 #else
 
 static inline int of_resolve(struct device_node *resolve)
+{
+	return -ENOTSUPP;
+}
+
+#endif
+
+/**
+ * Overlay support
+ */
+
+#ifdef CONFIG_OF_OVERLAY
+
+/* ID based overlays; the API for external users */
+int of_overlay_create(struct device_node *tree);
+int of_overlay_destroy(int id);
+int of_overlay_destroy_all(void);
+
+#else
+
+static inline int of_overlay_create(struct device_node *tree)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_overlay_destroy(int id)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_overlay_destroy_all(void)
 {
 	return -ENOTSUPP;
 }

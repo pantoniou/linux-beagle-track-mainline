@@ -84,4 +84,11 @@ config OF_RESOLVE
 	select OF_DYNAMIC
 	select OF_DEVICE
 
+config OF_OVERLAY
+	bool
+	depends on OF
+	select OF_DYNAMIC
+	select OF_DEVICE
+	select OF_RESOLVE
+
 endmenu # OF
