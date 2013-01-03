@@ -23,6 +23,7 @@
 #include <linux/spinlock.h>
 #include <linux/topology.h>
 #include <linux/notifier.h>
+#include <linux/list.h>
 
 #include <asm/byteorder.h>
 #include <asm/errno.h>
@@ -333,6 +334,8 @@ extern int of_update_property(struct device_node *np, struct property *newprop);
 #define OF_RECONFIG_ADD_PROPERTY	0x0003
 #define OF_RECONFIG_REMOVE_PROPERTY	0x0004
 #define OF_RECONFIG_UPDATE_PROPERTY	0x0005
+#define OF_RECONFIG_DYNAMIC_CREATE_DEV	0x0006
+#define OF_RECONFIG_DYNAMIC_DESTROY_DEV	0x0007
 
 struct of_prop_reconfig {
 	struct device_node	*dn;
@@ -863,6 +866,153 @@ int of_resolve(struct device_node *resolve);
 #else
 
 static inline int of_resolve(struct device_node *resolve)
+{
+	return -ENOTSUPP;
+}
+
+#endif
+
+/**
+ * Overlay support
+ */
+
+/**
+ * struct of_overlay_log_entry	- Holds a DT log entry
+ * @node:	list_head for the log list
+ * @action:	notifier action
+ * @np:		pointer to the device node affected
+ * @prop:	pointer to the property affected
+ * @old_prop:	hold a pointer to the original property
+ *
+ * Every modification of the device tree during application of the
+ * overlay is held in a list of of_overlay_log_entry structures.
+ * That way we can recover from a partial application, or we can
+ * revert the overlay properly.
+ */
+struct of_overlay_log_entry {
+	struct list_head node;
+	unsigned long action;
+	struct device_node *np;
+	struct property *prop;
+	struct property *old_prop;
+};
+
+struct of_overlay_device_entry;
+
+/**
+ * struct of_overlay_device_entry	- Holds an overlay device entry
+ * @node:	list_head for the device list
+ * @np:		device node pointer to the device node affected
+ * @state:	new device state
+ * @prevstate:	previous device state
+ * @priv:	private pointer for use by bus handlers
+ *
+ * When the overlay results in a device node's state to change this
+ * fact is recorded in a list of device entries. After the overlay
+ * is applied we can create/destroy the devices according
+ * to the new state of the live tree.
+ */
+struct of_overlay_device_entry {
+	struct list_head node;
+	struct device_node *np;
+	int prevstate;
+	int state;
+	void *priv;
+};
+
+/**
+ * struct of_overlay_info	- Holds a single overlay info
+ * @target:	target of the overlay operation
+ * @overlay:	pointer to the overlay contents node
+ * @le_list:	List of the overlay logs
+ * @de_list:	List of the overlay records
+ *
+ * Holds a single overlay state, including all the overlay logs &
+ * records.
+ */
+struct of_overlay_info {
+	struct device_node *target;
+	struct device_node *overlay;
+	struct list_head le_list;
+	struct list_head de_list;
+};
+
+/**
+ * struct of_overlay - Holds a complete overlay transaction
+ * @node:	List on which we are located
+ * @count:	Count of ovinfo structures
+ * @ovinfo:	Overlay info array (count size)
+ *
+ * Holds a complete overlay transaction
+ */
+struct of_overlay {
+	int id;
+	struct list_head node;
+	int count;
+	struct of_overlay_info *ovinfo_tab;
+	/* optional properties will follow eventually */
+};
+
+#ifdef CONFIG_OF_OVERLAY
+
+/* the following is the internal API */
+int of_overlay_apply(int count, struct of_overlay_info *ovinfo_tab);
+int of_overlay_revert(int count, struct of_overlay_info *ovinfo_tab);
+
+int of_fill_overlay_info(struct device_node *info_node,
+		struct of_overlay_info *ovinfo);
+int of_build_overlay_info(struct device_node *tree,
+		int *cntp, struct of_overlay_info **ovinfop);
+int of_free_overlay_info(int cnt, struct of_overlay_info *ovinfo);
+
+/* ID based overlays; the API for external users */
+int of_overlay_create(struct device_node *tree);
+int of_overlay_destroy(int id);
+int of_overlay_destroy_all(void);
+
+#else
+
+static inline int of_overlay_apply(int count,
+		struct of_overlay_info *ovinfo_tab)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_overlay_revert(int count,
+		struct of_overlay_info *ovinfo_tab)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_fill_overlay_info(struct device_node *info_node,
+		struct of_overlay_info *ovinfo)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_build_overlay_info(struct device_node *tree,
+		int *cntp, struct of_overlay_info **ovinfop)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_free_overlay_info(int cnt,
+		struct of_overlay_info *ovinfo)
+{
+	return -ENOTSUPP;
+}
+
+int of_overlay_create(struct device_node *tree)
+{
+	return -ENOTSUPP;
+}
+
+int of_overlay_destroy(int id)
+{
+	return -ENOTSUPP;
+}
+
+int of_overlay_destroy_all(void)
 {
 	return -ENOTSUPP;
 }
