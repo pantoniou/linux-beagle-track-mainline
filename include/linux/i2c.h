@@ -545,6 +545,9 @@ static inline int i2c_adapter_id(struct i2c_adapter *adap)
 #endif /* I2C */
 
 #if IS_ENABLED(CONFIG_OF)
+struct i2c_client *
+of_i2c_register_device(struct i2c_adapter *adap, struct device_node *node);
+
 /* must call put_device() when done with returned i2c_client device */
 extern struct i2c_client *of_find_i2c_device_by_node(struct device_node *node);
 
@@ -552,6 +555,13 @@ extern struct i2c_client *of_find_i2c_device_by_node(struct device_node *node);
 extern struct i2c_adapter *of_find_i2c_adapter_by_node(struct device_node *node);
 
 #else
+
+static inline struct i2c_client *
+of_i2c_register_device(struct i2c_adapter *adap,
+		struct device_node *node)
+{
+	return ERR_PTR(-ENODEV);
+}
 
 static inline struct i2c_client *of_find_i2c_device_by_node(struct device_node *node)
 {
