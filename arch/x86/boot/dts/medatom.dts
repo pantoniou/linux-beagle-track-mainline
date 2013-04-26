@@ -94,7 +94,7 @@
 						#address-cells = <1>;
 						#size-cells = <0>;
 
-						clock-frequency = <99000000>;
+						clock-frequency = <66000000>;
 
 						m25p80@0 {
 							compatible = "m25p80";
@@ -180,15 +180,8 @@
 					#size-cells = <2>;
 
 					pci@0,0 {
-						compatible = "opencores,i2c-ocores";
+						compatible = "opencores,uart";
 						reg = <0x080000 0x0 0x0 0x0 0x0>;
-
-						clock-frequency = <99000000>;
-						reg-io-width = <4>;
-						reg-shift = <3>;
-
-						#address-cells = <1>;
-						#size-cells = <0>;
 					};
 				};
 
@@ -202,24 +195,54 @@
 					#size-cells = <2>;
 
 					pci@0,0 {
-						compatible = "opencores,i2c-ocores";
+						compatible = "opencores,uart";
 						reg = <0x090000 0x0 0x0 0x0 0x0>;
+					};
+				};
 
-						clock-frequency = <99000000>;
+				pci@7,0 {
+					compatible = "ad,pcie";
+					bus-range = <0x0a 0x0a>;
+					device_type = "pci";
+					reg = <0x023800 0x0 0x0 0x0 0x0>;
+
+					#address-cells = <3>;
+					#size-cells = <2>;
+
+					pci@0,0 {
+						compatible = "opencores,uart";
+						reg = <0x0a0000 0x0 0x0 0x0 0x0>;
+					};
+				};
+
+				pci@8,0 {
+					compatible = "ad,pcie";
+					bus-range = <0x0b 0x0b>;
+					device_type = "pci";
+					reg = <0x024000 0x0 0x0 0x0 0x0>;
+
+					#address-cells = <3>;
+					#size-cells = <2>;
+
+					pci@0,0 {
+						compatible = "opencores,i2c-ocores";
+						reg = <0x0b0000 0x0 0x0 0x0 0x0>;
+
+						clock-frequency = <66000000>;
 						reg-io-width = <4>;
 						reg-shift = <3>;
 
 						#address-cells = <1>;
 						#size-cells = <0>;
 
-						touch: tsc2007@48 {
+						tsc2007@48 {
 							compatible = "ti,tsc2007";
 							reg = <0x48>;
 
 							interrupt-parent = <&gpio>;
 							interrupts = <1 0x8>;
 
-							pendown-gpios = <&gpio 1 0>;
+							pendown-gpios = <&gpio 1 0x1>;
 
 							x-plate-ohms = <50>;
 							max-rt = <110>;
@@ -235,18 +258,40 @@
 					};
 				};
 
-				pci@7,0 {
+				pci@9,0 {
 					compatible = "ad,pcie";
-					bus-range = <0x0a 0x0a>;
+					bus-range = <0x0c 0x0c>;
 					device_type = "pci";
-					reg = <0x023800 0x0 0x0 0x0 0x0>;
+					reg = <0x024800 0x0 0x0 0x0 0x0>;
+
+					#address-cells = <3>;
+					#size-cells = <2>;
+
+					pci@0,0 {
+						compatible = "opencores,i2c-ocores";
+						reg = <0x0c0000 0x0 0x0 0x0 0x0>;
+
+						clock-frequency = <66000000>;
+						reg-io-width = <4>;
+						reg-shift = <3>;
+
+						#address-cells = <1>;
+						#size-cells = <0>;
+					};
+				};
+
+				pci@a,0 {
+					compatible = "ad,pcie";
+					bus-range = <0x0d 0x0d>;
+					device_type = "pci";
+					reg = <0x025000 0x0 0x0 0x0 0x0>;
 
 					#address-cells = <3>;
 					#size-cells = <2>;
 
 					pci@0,0 {
 						compatible = "opencores,ethmac";
-						reg = <0x0a0000 0x0 0x0 0x0 0x0>;
+						reg = <0x0d0000 0x0 0x0 0x0 0x0>;
 					};
 				};
 			};
