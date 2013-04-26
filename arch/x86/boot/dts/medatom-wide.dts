@@ -94,7 +94,7 @@
 						#address-cells = <1>;
 						#size-cells = <0>;
 
-						clock-frequency = <99000000>;
+						clock-frequency = <66000000>;
 
 						m25p80@0 {
 							compatible = "m25p80";
@@ -183,7 +183,7 @@
 						compatible = "opencores,i2c-ocores";
 						reg = <0x080000 0x0 0x0 0x0 0x0>;
 
-						clock-frequency = <99000000>;
+						clock-frequency = <66000000>;
 						reg-io-width = <4>;
 						reg-shift = <3>;
 
@@ -202,58 +202,8 @@
 
 							power-gpios = <&gpio 7 0>;
 							threshold = <0x40>;
-							sensitivity = <7>;
-
-							cap@1 {
-								reg = <1>;
-								label = "Information";
-								linux,code = <358>; /* KEY_INFO */
-							};
-
-							cap@2 {
-								reg = <2>;
-								label = "Emergency";
-								linux,code = <138>; /* KEY_HELP */
-							};
-
-							cap@3 {
-								reg = <3>;
-								label = "Service";
-								linux,code = <152>; /* KEY_COFFEE */
-							};
-
-							cap@4 {
-								reg = <4>;
-								label = "Light";
-								linux,code = <240>; /* KEY_UNKNOWN */
-							};
-
-							cap@5 {
-								reg = <5>;
-								label = "Brightness Down";
-								linux,code = <224>; /* KEY_BRIGHTNESSDOWN */
-							};
-
-							cap@6 {
-								reg = <6>;
-								label = "Brightness Up";
-								linux,code = <225>; /* KEY_BRIGHTNESSUP */
-							};
-						};
-
-						keypad2: sx8634@2c {
-							compatible = "sx,sx8634";
-							reg = <0x2c>;
-
-							interrupt-parent = <&gpio>;
-							interrupts = <6 0x8>;
-
-							#address-cells = <1>;
-							#size-cells = <0>;
-
-							power-gpios = <&gpio 8 0>;
-							threshold = <0x40>;
-							sensitivity = <7>;
+							sensitivity = <5>;
+							debounce = <3>;
 
 							cap@1 {
 								reg = <1>;
@@ -292,6 +242,58 @@
 							};
 						};
 
+						keypad2: sx8634@2c {
+							compatible = "sx,sx8634";
+							reg = <0x2c>;
+
+							interrupt-parent = <&gpio>;
+							interrupts = <6 0x8>;
+
+							#address-cells = <1>;
+							#size-cells = <0>;
+
+							power-gpios = <&gpio 8 0>;
+							threshold = <0x40>;
+							sensitivity = <5>;
+							debounce = <3>;
+
+							cap@1 {
+								reg = <1>;
+								label = "Information";
+								linux,code = <358>; /* KEY_INFO */
+							};
+
+							cap@2 {
+								reg = <2>;
+								label = "Emergency";
+								linux,code = <138>; /* KEY_HELP */
+							};
+
+							cap@3 {
+								reg = <3>;
+								label = "Service";
+								linux,code = <152>; /* KEY_COFFEE */
+							};
+
+							cap@4 {
+								reg = <4>;
+								label = "Light";
+								linux,code = <240>; /* KEY_UNKNOWN */
+							};
+
+							cap@5 {
+								reg = <5>;
+								label = "Brightness Down";
+								linux,code = <224>; /* KEY_BRIGHTNESSDOWN */
+							};
+
+							cap@6 {
+								reg = <6>;
+								label = "Brightness Up";
+								linux,code = <225>; /* KEY_BRIGHTNESSUP */
+							};
+						};
+
 						tvp5150@5d {
 							compatible = "ti,tvp5150";
 							reg = <0x5d>;
@@ -315,7 +317,7 @@
 						compatible = "opencores,i2c-ocores";
 						reg = <0x090000 0x0 0x0 0x0 0x0>;
 
-						clock-frequency = <99000000>;
+						clock-frequency = <66000000>;
 						reg-io-width = <4>;
 						reg-shift = <3>;
 					};
