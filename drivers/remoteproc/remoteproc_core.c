@@ -189,26 +189,56 @@ void *rproc_da_to_va(struct rproc *rproc, u64 da, int len)
 }
 EXPORT_SYMBOL(rproc_da_to_va);
 
+static inline void *rproc_alloc_vring_internal(struct rproc *rproc,
+		const struct fw_rsc_vdev_vring *vring,
+		int size, dma_addr_t *dma)
+{
+	struct device *dev = &rproc->dev;
+
+	/* Custom vring allocator */
+	if (rproc->ops->alloc_vring != NULL)
+		return rproc->ops->alloc_vring(rproc, vring, size, dma);
+
+	/*
+	 * Allocate non-cacheable memory for the vring. In the future
+	 * this call will also configure the IOMMU for us
+	 * TODO: let the rproc know the da of this vring
+	 */
+	return dma_alloc_coherent(dev->parent, PAGE_ALIGN(size),
+			dma, GFP_KERNEL);
+}
+
+static inline void rproc_free_vring_internal(struct rproc *rproc,
+		const struct fw_rsc_vdev_vring *vring,
+		int size, void *va, dma_addr_t dma)
+{
+	struct device *dev = &rproc->dev;
+
+	/* Custom vring allocator */
+	if (rproc->ops->free_vring != NULL)
+		rproc->ops->free_vring(rproc, vring, size, va, dma);
+	else
+		dma_free_coherent(dev->parent,
+			PAGE_ALIGN(size), va, dma);
+}
+
 int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 {
 	struct rproc *rproc = rvdev->rproc;
 	struct device *dev = &rproc->dev;
 	struct rproc_vring *rvring = &rvdev->vring[i];
 	struct fw_rsc_vdev *rsc;
+	struct fw_rsc_vdev_vring *vring = rvring->rsc_vring;
 	dma_addr_t dma;
 	void *va;
 	int ret, size, notifyid;
 
 	/* actual size of vring (in bytes) */
-	size = PAGE_ALIGN(vring_size(rvring->len, rvring->align));
+	size = vring_size(rvring->len, rvring->align);
 
-	/*
-	 * Allocate non-cacheable memory for the vring. In the future
-	 * this call will also configure the IOMMU for us
-	 */
-	va = dma_alloc_coherent(dev->parent, size, &dma, GFP_KERNEL);
+	va = rproc_alloc_vring_internal(rproc, vring, size, &dma);
 	if (!va) {
-		dev_err(dev->parent, "dma_alloc_coherent failed\n");
+		dev_err(dev->parent, "rproc alloc of vring #%d failed\n", i);
 		return -EINVAL;
 	}
 
@@ -220,7 +250,7 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	ret = idr_alloc(&rproc->notifyids, rvring, 0, 0, GFP_KERNEL);
 	if (ret < 0) {
 		dev_err(dev, "idr_alloc failed: %d\n", ret);
-		dma_free_coherent(dev->parent, size, va, dma);
+		rproc_free_vring_internal(rproc, vring, size, va, dma);
 		return ret;
 	}
 	notifyid = ret;
@@ -272,6 +302,9 @@ rproc_parse_vring(struct rproc_vdev *rvdev, struct fw_rsc_vdev *rsc, int i)
 	rvring->align = vring->align;
 	rvring->rvdev = rvdev;
 
+	/* point to the resource */
+	rvring->rsc_vring = vring;
+
 	return 0;
 }
 
@@ -282,7 +315,8 @@ void rproc_free_vring(struct rproc_vring *rvring)
 	int idx = rvring->rvdev->vring - rvring;
 	struct fw_rsc_vdev *rsc;
 
-	dma_free_coherent(rproc->dev.parent, size, rvring->va, rvring->dma);
+	rproc_free_vring_internal(rproc, rvring->rsc_vring,
+			size, rvring->va, rvring->dma);
 	idr_remove(&rproc->notifyids, rvring->notifyid);
 
 	/* reset resource entry info */
@@ -352,6 +386,9 @@ static int rproc_handle_vdev(struct rproc *rproc, struct fw_rsc_vdev *rsc,
 		return -ENOMEM;
 
 	rvdev->rproc = rproc;
+
+	/* point to the resource */
+	rvdev->rsc_vdev = rsc;
 
 	/* parse the vrings */
 	for (i = 0; i < rsc->num_of_vrings; i++) {

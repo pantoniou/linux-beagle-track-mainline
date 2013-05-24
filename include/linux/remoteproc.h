@@ -335,6 +335,13 @@ struct rproc_ops {
 	int (*start)(struct rproc *rproc);
 	int (*stop)(struct rproc *rproc);
 	void (*kick)(struct rproc *rproc, int vqid);
+
+	void *(*alloc_vring)(struct rproc *rproc,
+		const struct fw_rsc_vdev_vring *vring,
+		int size, dma_addr_t *dma);
+	void (*free_vring)(struct rproc *rproc,
+		const struct fw_rsc_vdev_vring *vring,
+		int size, void *va, dma_addr_t dma);
 };
 
 /**
@@ -461,6 +468,7 @@ struct rproc_vring {
 	int notifyid;
 	struct rproc_vdev *rvdev;
 	struct virtqueue *vq;
+	struct fw_rsc_vdev_vring *rsc_vring;
 };
 
 /**
@@ -477,6 +485,7 @@ struct rproc_vdev {
 	struct virtio_device vdev;
 	struct rproc_vring vring[RVDEV_NUM_VRINGS];
 	u32 rsc_offset;
+	struct fw_rsc_vdev *rsc_vdev;
 };
 
 struct rproc *rproc_alloc(struct device *dev, const char *name,
