@@ -16,6 +16,19 @@
 	cpus {
 		cpu@0 {
 			cpu0-supply = <&dcdc2_reg>;
+
+			/*
+			 * To consider voltage drop between PMIC and SoC,
+			 * tolerance value is reduced to 2% from 4% and
+			 * voltage value is increased as a precaution.
+			 */
+			operating-points = <
+				/* kHz    uV */
+				1000000	1350000
+				800000	1300000
+				600000  1112000
+				300000   969000
+			>;
 		};
 	};
 
@@ -36,6 +49,24 @@
 				0x60 0x17	/* gpmc_a8.gpio1_24, OUTPUT_PULLUP | MODE7 */
 			>;
 		};
+
+		emmc2_pins: pinmux_emmc2_pins {
+			pinctrl-single,pins = <
+				0x80 0x32	/* gpmc_csn1.mmc1_clk, INPUT_PULLUP | MODE2 */
+				0x84 0x32	/* gpmc_csn2.mmc1_cmd, INPUT_PULLUP | MODE2 */
+				0x00 0x31	/* gpmc_ad0.mmc1_dat0, INPUT_PULLUP | MODE1 */
+				0x04 0x31	/* gpmc_ad1.mmc1_dat1, INPUT_PULLUP | MODE1 */
+				0x08 0x31	/* gpmc_ad2.mmc1_dat2, INPUT_PULLUP | MODE1 */
+				0x0c 0x31	/* gpmc_ad3.mmc1_dat3, INPUT_PULLUP | MODE1 */
+				0x10 0x31	/* gpmc_ad4.mmc1_dat4, INPUT_PULLUP | MODE1 */
+				0x14 0x31	/* gpmc_ad5.mmc1_dat5, INPUT_PULLUP | MODE1 */
+				0x18 0x31	/* gpmc_ad6.mmc1_dat6, INPUT_PULLUP | MODE1 */
+				0x1c 0x31	/* gpmc_ad7.mmc1_dat7, INPUT_PULLUP | MODE1 */
+				/* eMMC_RSTn */
+				0x50 0x17	/* gpmc_a4.gpio1_20, OUTPUT | MODE7 | PULLUP */
+			>;
+		};
+
 		i2c0_pins: pinmux_i2c0_pins {
 			pinctrl-single,pins = <
 				0x188 0x70 	/* i2c0_sda, SLEWCTRL_SLOW | INPUT_PULLUP | MODE0 */
@@ -97,7 +128,6 @@
 				reg = <0x57>;
 			};
 		};
-
 	};
 
 	leds {
@@ -128,6 +158,13 @@
 			gpios = <&gpio1 24 0>;
 			default-state = "off";
 		};
+	};
+
+	vmmcsd_fixed: fixedregulator@0 {
+		compatible = "regulator-fixed";
+		regulator-name = "vmmcsd_fixed";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
 	};
 
 	bone_capemgr {
@@ -242,7 +279,7 @@
 
 		ldo3_reg: regulator@5 {
 			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <3300000>;
+			regulator-max-microvolt = <1800000>;	/* orig 3.3V*/
 			regulator-always-on;
 		};
 
@@ -262,5 +299,18 @@
 
 &mmc1 {
 	status = "okay";
+	vmmc-supply = <&vmmcsd_fixed>;
+	ti,vcc-aux-disable-is-sleep;
+};
+
+&mmc2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&emmc2_pins>;	/* wrong numbering */
 	vmmc-supply = <&ldo3_reg>;
+	bus-width = <8>;
+	ti,non-removable;
+	status = "okay";
+	ti,vcc-aux-disable-is-sleep;
+
+	reset-gpio = <&gpio1 20 0x00>;
 };
