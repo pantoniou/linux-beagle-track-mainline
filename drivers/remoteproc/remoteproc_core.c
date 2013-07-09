@@ -856,21 +856,19 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 
 	/* look for the resource table */
 	table = rproc_find_rsc_table(rproc, fw, &tablesz);
-	if (!table) {
-		goto clean_up;
-	}
+	if (table != NULL) {
+		/* Verify that resource table in loaded fw is unchanged */
+		if (rproc->table_csum != crc32(0, table, tablesz)) {
+			dev_err(dev, "resource checksum failed, fw changed?\n");
+			goto clean_up;
+		}
 
-	/* Verify that resource table in loaded fw is unchanged */
-	if (rproc->table_csum != crc32(0, table, tablesz)) {
-		dev_err(dev, "resource checksum failed, fw changed?\n");
-		goto clean_up;
-	}
-
-	/* handle fw resources which are required to boot rproc */
-	ret = rproc_handle_resources(rproc, tablesz, rproc_loading_handlers);
-	if (ret) {
-		dev_err(dev, "Failed to process resources: %d\n", ret);
-		goto clean_up;
+		/* handle fw resources which are required to boot rproc */
+		ret = rproc_handle_resources(rproc, tablesz, rproc_loading_handlers);
+		if (ret) {
+			dev_err(dev, "Failed to process resources: %d\n", ret);
+			goto clean_up;
+		}
 	}
 
 	/* load the ELF segments to memory */
