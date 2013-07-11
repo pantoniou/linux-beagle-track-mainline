@@ -178,6 +178,26 @@ odbfd_exit:
 	return ret;
 }
 
+static void omap_device_pm_init(struct platform_device *pdev)
+{
+	omap_device_enable(pdev);
+	pm_runtime_forbid(&pdev->dev);
+	pm_runtime_set_active(&pdev->dev);
+	device_enable_async_suspend(&pdev->dev);
+}
+
+static void omap_device_pm_allow(struct platform_device *pdev)
+{
+	pm_runtime_allow(&pdev->dev);
+}
+
+static void omap_device_pm_exit(struct platform_device *pdev)
+{
+	device_disable_async_suspend(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
+	omap_device_idle(pdev);
+}
+
 static int _omap_device_notifier_call(struct notifier_block *nb,
 				      unsigned long event, void *dev)
 {
@@ -189,15 +209,30 @@ static int _omap_device_notifier_call(struct notifier_block *nb,
 		if (pdev->archdata.od)
 			omap_device_delete(pdev->archdata.od);
 		break;
+	case BUS_NOTIFY_BIND_DRIVER:
+		if (pdev->archdata.od)
+			omap_device_pm_init(pdev);
+		break;
+	case BUS_NOTIFY_BOUND_DRIVER:
+		if (pdev->archdata.od)
+			omap_device_pm_allow(pdev);
+		break;
+	case BUS_NOTIFY_UNBOUND_DRIVER:
+		if (pdev->archdata.od)
+			omap_device_pm_exit(pdev);
+		break;
 	case BUS_NOTIFY_ADD_DEVICE:
 		if (pdev->dev.of_node)
 			omap_device_build_from_dt(pdev);
-		/* fall through */
+		break;
 	default:
-		od = to_omap_device(pdev);
-		if (od)
-			od->_driver_status = event;
+		/* nothing */
+		break;
 	}
+
+	od = to_omap_device(pdev);
+	if (od)
+		od->_driver_status = event;
 
 	return NOTIFY_DONE;
 }
@@ -919,6 +954,7 @@ static int __init omap_device_late_idle(struct device *dev, void *data)
 			dev_warn(dev, "%s: enabled but no driver.  Idling\n",
 				 __func__);
 			omap_device_idle(pdev);
+			pm_runtime_set_suspended(dev);
 		}
 	}
 
