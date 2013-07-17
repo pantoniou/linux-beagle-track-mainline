@@ -26,7 +26,7 @@
 #include <linux/of_device.h>
 #include <linux/iio/machine.h>
 #include <linux/iio/driver.h>
-
+#include <linux/math64.h>
 #include <linux/mfd/ti_am335x_tscadc.h>
 
 struct tiadc_device {
@@ -60,7 +60,6 @@ static void tiadc_step_config(struct tiadc_device *adc_dev)
 {
 	unsigned int stepconfig;
 	int i, steps;
-	u32 step_en;
 
 	/*
 	 * There are 16 configurable steps and 8 analog input
@@ -86,8 +85,7 @@ static void tiadc_step_config(struct tiadc_device *adc_dev)
 		adc_dev->channel_step[i] = steps;
 		steps++;
 	}
-	step_en = get_adc_step_mask(adc_dev);
-	am335x_tsc_se_set(adc_dev->mfd_tscadc, step_en);
+
 }
 
 static const char * const chan_name_ain[] = {
@@ -120,7 +118,8 @@ static int tiadc_channel_init(struct iio_dev *indio_dev, int channels)
 		chan->type = IIO_VOLTAGE;
 		chan->indexed = 1;
 		chan->channel = adc_dev->channel_line[i];
-		chan->info_mask_separate = BIT(IIO_CHAN_INFO_RAW);
+		chan->info_mask_separate = BIT(IIO_CHAN_INFO_RAW) |
+						BIT(IIO_CHAN_INFO_SCALE);
 		chan->datasheet_name = chan_name_ain[chan->channel];
 		chan->scan_type.sign = 'u';
 		chan->scan_type.realbits = 12;
@@ -142,10 +141,22 @@ static int tiadc_read_raw(struct iio_dev *indio_dev,
 		int *val, int *val2, long mask)
 {
 	struct tiadc_device *adc_dev = iio_priv(indio_dev);
-	int i;
-	unsigned int fifo1count, read;
+	int i, map_val;
+	unsigned int fifo1count, read, stepid;
 	u32 step = UINT_MAX;
 	bool found = false;
+	u32 step_en;
+	unsigned long timeout = jiffies + usecs_to_jiffies
+				(IDLE_TIMEOUT * adc_dev->channels);
+	step_en = get_adc_step_mask(adc_dev);
+	am335x_tsc_se_set(adc_dev->mfd_tscadc, step_en);
+ 
+	/* Wait for ADC sequencer to complete sampling */
+	while (tiadc_readl(adc_dev, REG_ADCFSM) & SEQ_STATUS) {
+		if (time_after(jiffies, timeout))
+			return -EAGAIN;
+		}
+	map_val = chan->channel + TOTAL_CHANNELS;
 
 	/*
 	 * When the sub-system is first enabled,
@@ -170,12 +181,28 @@ static int tiadc_read_raw(struct iio_dev *indio_dev,
 	fifo1count = tiadc_readl(adc_dev, REG_FIFO1CNT);
 	for (i = 0; i < fifo1count; i++) {
 		read = tiadc_readl(adc_dev, REG_FIFO1);
-		if (read >> 16 == step) {
-			*val = read & 0xfff;
+		stepid = read & FIFOREAD_CHNLID_MASK;
+		stepid = stepid >> 0x10;
+
+		if (stepid == map_val) {
+			read = read & FIFOREAD_DATA_MASK;
 			found = true;
+			*val = read;
 		}
 	}
-	am335x_tsc_se_update(adc_dev->mfd_tscadc);
+
+	switch (mask){
+		case IIO_CHAN_INFO_RAW : /*Do nothing. Above code works fine.*/
+					break;
+		case IIO_CHAN_INFO_SCALE : {
+			/*12 Bit adc. Scale value for 1800mV AVDD. Ideally
+			AVDD should come from DT.*/
+			*val = div_u64( (u64)(*val) * 1800 , 4096);
+			break;
+		}
+		default: break;
+	}
+
 	if (found == false)
 		return -EBUSY;
 	return IIO_VAL_INT;
