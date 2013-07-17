@@ -778,6 +778,16 @@ tda998x_encoder_mode_set(struct drm_encoder *encoder,
 	n_line       = mode->vtotal;
 
 	ref_pix      = 3 + mode->hsync_start - mode->hdisplay;
+
+	/*
+	 * handle issue on TILCDC where it is outputing
+	 * non-VESA compliant sync signals the workaround
+	 * forces us to invert the HSYNC, so need to adjust display to
+	 * the left by hskew pixels, provided by the tilcdc driver
+	 */
+	if(adjusted_mode && adjusted_mode->flags & DRM_MODE_FLAG_HSKEW)
+		ref_pix += adjusted_mode->hskew;
+
 	de_pix_s     = mode->htotal - mode->hdisplay;
 	de_pix_e     = de_pix_s + mode->hdisplay;
 	hs_pix_s     = mode->hsync_start - mode->hdisplay;
