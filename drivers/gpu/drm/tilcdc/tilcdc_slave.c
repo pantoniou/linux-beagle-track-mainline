@@ -25,22 +25,10 @@
 
 struct slave_module {
 	struct tilcdc_module base;
+	struct tilcdc_panel_info *info;
 	struct i2c_adapter *i2c;
 };
 #define to_slave_module(x) container_of(x, struct slave_module, base)
-
-static const struct tilcdc_panel_info slave_info = {
-		.bpp                    = 16,
-		.ac_bias                = 255,
-		.ac_bias_intrpt         = 0,
-		.dma_burst_sz           = 16,
-		.fdd                    = 0x80,
-		.tft_alt_mode           = 0,
-		.sync_edge              = 0,
-		.sync_ctrl              = 1,
-		.raster_order           = 0,
-};
-
 
 /*
  * Encoder:
@@ -69,9 +57,30 @@ static void slave_encoder_destroy(struct drm_encoder *encoder)
 
 static void slave_encoder_prepare(struct drm_encoder *encoder)
 {
+	struct slave_encoder *slave_encoder = to_slave_encoder(encoder);
+
 	drm_i2c_encoder_prepare(encoder);
-	tilcdc_crtc_set_panel_info(encoder->crtc, &slave_info);
+	tilcdc_crtc_set_panel_info(encoder->crtc, slave_encoder->mod->info);
 }
+
+static bool slave_encoder_fixup(struct drm_encoder *encoder,
+		const struct drm_display_mode *mode,
+		struct drm_display_mode *adjusted_mode)
+{
+	adjusted_mode->hskew = mode->hsync_end - mode->hsync_start;
+	adjusted_mode->flags |= DRM_MODE_FLAG_HSKEW;
+
+	if(mode->flags & DRM_MODE_FLAG_NHSYNC) {
+		adjusted_mode->flags |= DRM_MODE_FLAG_PHSYNC;
+		adjusted_mode->flags &= ~DRM_MODE_FLAG_NHSYNC;
+	} else {
+		adjusted_mode->flags |= DRM_MODE_FLAG_NHSYNC;
+		adjusted_mode->flags &= ~DRM_MODE_FLAG_PHSYNC;
+	}
+
+	return drm_i2c_encoder_mode_fixup(encoder, mode, adjusted_mode);
+}
+
 
 static const struct drm_encoder_funcs slave_encoder_funcs = {
 		.destroy        = slave_encoder_destroy,
@@ -79,7 +88,7 @@ static const struct drm_encoder_funcs slave_encoder_funcs = {
 
 static const struct drm_encoder_helper_funcs slave_encoder_helper_funcs = {
 		.dpms           = drm_i2c_encoder_dpms,
-		.mode_fixup     = drm_i2c_encoder_mode_fixup,
+		.mode_fixup     = slave_encoder_fixup,
 		.prepare        = slave_encoder_prepare,
 		.commit         = drm_i2c_encoder_commit,
 		.mode_set       = drm_i2c_encoder_mode_set,
@@ -276,6 +285,7 @@ static void slave_destroy(struct tilcdc_module *mod)
 	struct slave_module *slave_mod = to_slave_module(mod);
 
 	tilcdc_module_cleanup(mod);
+	kfree(slave_mod->info);
 	kfree(slave_mod);
 }
 
@@ -330,13 +340,25 @@ static int slave_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	slave_mod = kzalloc(sizeof(*slave_mod), GFP_KERNEL);
-	if (!slave_mod)
-		return -ENOMEM;
+	slave_mod = devm_kzalloc(&pdev->dev, sizeof(*slave_mod), GFP_KERNEL);
+	if (!slave_mod) {
+		tilcdc_slave_probedefer(false);
+		dev_err(&pdev->dev, "could not allocate slave_mod\n");
+               return -ENOMEM;
+	}
+
+	platform_set_drvdata(pdev, slave_mod);
+
+	slave_mod->info = tilcdc_of_get_panel_info(node);
+	if (!slave_mod->info) {
+		tilcdc_slave_probedefer(false);
+		dev_err(&pdev->dev, "could not get panel info\n");
+		return ret;
+	}
 
 	mod = &slave_mod->base;
 
-	mod->preferred_bpp = slave_info.bpp;
+	mod->preferred_bpp = slave_mod->info->bpp;
 
 	slave_mod->i2c = slavei2c;
 
@@ -353,6 +375,11 @@ static int slave_probe(struct platform_device *pdev)
 
 static int slave_remove(struct platform_device *pdev)
 {
+	struct slave_module *slave_mod = platform_get_drvdata(pdev);
+
+	put_device(&slave_mod->i2c->dev);
+	kfree(slave_mod->info);
+
 	return 0;
 }
 
