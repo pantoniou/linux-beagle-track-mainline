@@ -359,3 +359,11 @@
 	vmmc-supply = <&ldo3_reg>;
 	ti,vcc-aux-disable-is-sleep;
 };
+
+&usb_otg_hs {
+	interface_type = <1>;
+	power = <250>;
+	port0-mode = <3>;
+	port1-mode = <1>;
+	status = "okay";
+};
