@@ -230,8 +230,14 @@ static void otg_timer(unsigned long _musb)
 	spin_lock_irqsave(&musb->lock, flags);
 	switch (musb->xceiv->state) {
 	case OTG_STATE_A_WAIT_BCON:
-		devctl &= ~MUSB_DEVCTL_SESSION;
-		dsps_writeb(musb->mregs, MUSB_DEVCTL, devctl);
+		/*
+		 * We need to avoid stopping the session in host mode,
+		 * otherwise we don't see any newly connected devices
+		 */
+		if (!is_host_active(musb)) {
+			devctl &= ~MUSB_DEVCTL_SESSION;
+			dsps_writeb(musb->mregs, MUSB_DEVCTL, devctl);
+		}
 
 		devctl = dsps_readb(musb->mregs, MUSB_DEVCTL);
 		if (devctl & MUSB_DEVCTL_BDEVICE) {
@@ -416,7 +422,9 @@ static int dsps_musb_init(struct musb *musb)
 	musb->mregs += wrp->musb_core_offset;
 
 	/* NOP driver needs change if supporting dual instance */
-	usb_nop_xceiv_register();
+	if(!pdev->id) {
+		usb_nop_xceiv_register();
+	}
 	musb->xceiv = usb_get_phy(USB_PHY_TYPE_USB2);
 	if (IS_ERR_OR_NULL(musb->xceiv))
 		return -EPROBE_DEFER;
@@ -449,7 +457,9 @@ static int dsps_musb_init(struct musb *musb)
 	return 0;
 err0:
 	usb_put_phy(musb->xceiv);
-	usb_nop_xceiv_unregister();
+	if(!pdev->id) {
+		usb_nop_xceiv_unregister();
+	}
 	return status;
 }
 
@@ -466,7 +476,9 @@ static int dsps_musb_exit(struct musb *musb)
 
 	/* NOP driver needs change if supporting dual instance */
 	usb_put_phy(musb->xceiv);
-	usb_nop_xceiv_unregister();
+	if(!pdev->id) {
+		usb_nop_xceiv_unregister();
+	}
 
 	return 0;
 }
@@ -747,7 +759,7 @@ static const struct dsps_musb_wrapper ti81xx_driver_data = {
 	.rxep_bitmap		= (0xfffe << 16),
 	.musb_core_offset	= 0x400,
 	.poll_seconds		= 2,
-	.instances		= 1,
+	.instances		= 2,
 };
 
 static const struct platform_device_id musb_dsps_id_table[] = {
