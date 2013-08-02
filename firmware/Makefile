@@ -136,6 +136,12 @@ fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
 
+# the virtual peripheral capes for the UARTs
+# UART3 is not routed to the connectors, no cape for it
+fw-shipped-$(CONFIG_CAPE_BEAGLEBONE) += \
+	BB-UART1-00A0.dtbo BB-UART2-00A0.dtbo \
+	BB-UART4-00A0.dtbo BB-UART5-00A0.dtbo
+
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 
 # Directories which we _might_ need to create, so we have a rule for them.
@@ -146,6 +152,9 @@ quiet_cmd_mkdir = MKDIR   $(patsubst $(objtree)/%,%,$@)
 
 quiet_cmd_ihex  = IHEX    $@
       cmd_ihex  = $(OBJCOPY) -Iihex -Obinary $< $@
+
+quiet_cmd_dtco	= DTCO $@
+      cmd_dtco	= $(objtree)/scripts/dtc/dtc -O dtb -o $@ -b 0 $(DTC_FLAGS) -@ $<
 
 quiet_cmd_ihex2fw  = IHEX2FW $@
       cmd_ihex2fw  = $(objtree)/$(obj)/ihex2fw $< $@
@@ -232,6 +241,10 @@ $(obj)/%.fw: $(obj)/%.HEX $(ihex2fw_dep) | $(objtree)/$(obj)/$$(dir %)
 # .H16 is our own modified form of Intel HEX, with 16-bit length for records.
 $(obj)/%.fw: $(obj)/%.H16 $(ihex2fw_dep) | $(objtree)/$(obj)/$$(dir %)
 	$(call cmd,h16tofw)
+
+# DTBO is device tree blob object
+$(obj)/%.dtbo: $(obj)/capes/%.dts | $(objtree)/$(obj)/$$(dir %)
+	$(call cmd,dtco)
 
 $(firmware-dirs):
 	$(call cmd,mkdir)
