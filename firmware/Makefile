@@ -142,6 +142,16 @@ fw-shipped-$(CONFIG_CAPE_BEAGLEBONE) += \
 	BB-UART1-00A0.dtbo BB-UART2-00A0.dtbo \
 	BB-UART4-00A0.dtbo BB-UART5-00A0.dtbo
 
+# The virtual capes for the onboard HDMI interface of beaglebone black
+# First one is with audio support, the next without
+fw-shipped-$(CONFIG_CAPE_BEAGLEBONE) += \
+	BB-BONEBL-HDMI-00A0.dtbo \
+	BB-BONEBL-HDMIN-00A0.dtbo
+
+# The virtual capes for the onboard eMMC interface of beaglebone black
+fw-shipped-$(CONFIG_CAPE_BEAGLEBONE) += \
+	BB-BONEBL-EMMC-00A0.dtbo
+
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 
 # Directories which we _might_ need to create, so we have a rule for them.
