@@ -142,7 +142,7 @@
 		};
 	};
 
-	ocp {
+	ocp: ocp {
 		uart0: serial@44e09000 {
 			pinctrl-names = "default";
 			pinctrl-0 = <&uart0_pins>;
