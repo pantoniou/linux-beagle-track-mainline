@@ -186,6 +186,32 @@ odbfd_exit:
 	return ret;
 }
 
+static void _omap_device_cleanup(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct omap_device *od;
+	struct omap_hwmod *oh;
+	int i;
+
+	od = pdev->archdata.od;
+	if (!od)
+		return;
+
+	for (i = 0; i < od->hwmods_cnt; i++) {
+
+		oh = od->hwmods[i];
+
+		/* shutdown hwmods */
+		omap_hwmod_shutdown(oh);
+
+		/* we don't remove clocks cause there's no API to do so */
+		/* no harm done, since they will not be created next time */
+	}
+
+	/* cleanup the structure now */
+	omap_device_delete(od);
+}
+
 static int _omap_device_notifier_call(struct notifier_block *nb,
 				      unsigned long event, void *dev)
 {
@@ -193,9 +219,13 @@ static int _omap_device_notifier_call(struct notifier_block *nb,
 	struct omap_device *od;
 
 	switch (event) {
-	case BUS_NOTIFY_DEL_DEVICE:
+	case BUS_NOTIFY_UNBOUND_DRIVER:
+		/* NOTIFY_DEL_DEVICE is not the right call...
+		 * we use a callback here, to make sure no-one is going to
+		 * try to use the omap_device data after they're deleted
+		 */
 		if (pdev->archdata.od)
-			omap_device_delete(pdev->archdata.od);
+			device_schedule_callback(dev, _omap_device_cleanup);
 		break;
 	case BUS_NOTIFY_ADD_DEVICE:
 		if (pdev->dev.of_node)
