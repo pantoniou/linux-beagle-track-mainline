@@ -43,7 +43,7 @@
  * with optimized DDR & EMIF settings tweaked 1920x1080@24 appears to
  * be supportable
  */
-#define TILCDC_DEFAULT_MAX_BANDWIDTH  (1280*1024*60)
+#define TILCDC_DEFAULT_MAX_BANDWIDTH  (1680*1050*60)
 
 
 struct tilcdc_drm_private {
@@ -169,5 +169,8 @@ void tilcdc_crtc_set_panel_info(struct drm_crtc *crtc,
 		const struct tilcdc_panel_info *info);
 int tilcdc_crtc_mode_valid(struct drm_crtc *crtc, struct drm_display_mode *mode);
 int tilcdc_crtc_max_width(struct drm_crtc *crtc);
+
+/* OF helper for reading panel info */
+struct tilcdc_panel_info *tilcdc_of_get_panel_info(struct device_node *np);
 
 #endif /* __TILCDC_DRV_H__ */
