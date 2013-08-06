@@ -16,12 +16,25 @@
 	cpus {
 		cpu@0 {
 			cpu0-supply = <&dcdc2_reg>;
+
+			/*
+			 * To consider voltage drop between PMIC and SoC,
+			 * tolerance value is reduced to 2% from 4% and
+			 * voltage value is increased as a precaution.
+			 */
+			operating-points = <
+				/* kHz    uV */
+				1000000	1350000
+				800000	1300000
+				600000  1112000
+				300000   969000
+			>;
 		};
 	};
 
 	memory {
 		device_type = "memory";
-		reg = <0x80000000 0x10000000>; /* 256 MB */
+		reg = <0x80000000 0x20000000>; /* 512 MB */
 	};
 
 	am33xx_pinmux: pinmux@44e10800 {
@@ -110,6 +123,24 @@
 				0x14c (PIN_INPUT_PULLDOWN | MUX_MODE7)
 			>;
 		};
+
+		emmc_pins: pinmux_emmc_pins {
+			pinctrl-single,pins = <
+				0x80 (PIN_INPUT_PULLUP | MUX_MODE2)	/* gpmc_csn1.mmc1_clk */
+				0x84 (PIN_INPUT_PULLUP | MUX_MODE2)	/* gpmc_csn2.mmc1_cmd */
+				0x00 (PIN_INPUT_PULLUP | MUX_MODE1)	/* gpmc_ad0.mmc1_dat0 */
+				0x04 (PIN_INPUT_PULLUP | MUX_MODE1)	/* gpmc_ad1.mmc1_dat1 */
+				0x08 (PIN_INPUT_PULLUP | MUX_MODE1)	/* gpmc_ad2.mmc1_dat2 */
+				0x0c (PIN_INPUT_PULLUP | MUX_MODE1)	/* gpmc_ad3.mmc1_dat3 */
+				0x10 (PIN_INPUT_PULLUP | MUX_MODE1)	/* gpmc_ad4.mmc1_dat4 */
+				0x14 (PIN_INPUT_PULLUP | MUX_MODE1)	/* gpmc_ad5.mmc1_dat5 */
+				0x18 (PIN_INPUT_PULLUP | MUX_MODE1)	/* gpmc_ad6.mmc1_dat6 */
+				0x1c (PIN_INPUT_PULLUP | MUX_MODE1)	/* gpmc_ad7.mmc1_dat7 */
+				/* eMMC_RSTn */
+				0x50 (PIN_OUTPUT_PULLUP | MUX_MODE7)	/* gpmc_a4.gpio1_20 */
+			>;
+		};
+
 		i2c0_pins: pinmux_i2c0_pins {
 			pinctrl-single,pins = <
 				0x188 0x70 	/* i2c0_sda, SLEWCTRL_SLOW | INPUT_PULLUP | MODE0 */
@@ -175,7 +206,6 @@
 				reg = <0x57>;
 			};
 		};
-
 	};
 
 	leds {
@@ -185,30 +215,37 @@
 		compatible = "gpio-leds";
 
 		led@2 {
-			label = "beaglebone:green:heartbeat";
-			gpios = <&gpio1 21 GPIO_ACTIVE_HIGH>;
+			label = "beaglebone:blue:heartbeat";
+			gpios = <&gpio1 21 0>;
 			linux,default-trigger = "heartbeat";
 			default-state = "off";
 		};
 
 		led@3 {
-			label = "beaglebone:green:mmc0";
+			label = "beaglebone:blue:mmc0";
 			gpios = <&gpio1 22 GPIO_ACTIVE_HIGH>;
 			linux,default-trigger = "mmc0";
 			default-state = "off";
 		};
 
 		led@4 {
-			label = "beaglebone:green:usr2";
+			label = "beaglebone:blue:usr2";
 			gpios = <&gpio1 23 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
 		};
 
 		led@5 {
-			label = "beaglebone:green:usr3";
+			label = "beaglebone:blue:usr3";
 			gpios = <&gpio1 24 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
 		};
+	};
+
+	vmmcsd_fixed: fixedregulator@0 {
+		compatible = "regulator-fixed";
+		regulator-name = "vmmcsd_fixed";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
 	};
 
 	bone_capemgr {
@@ -254,7 +291,7 @@
 				board-name = "Bone-LT-eMMC-2G";
 				version = "00A0";
 				manufacturer = "Texas Instruments";
-				part-number = "BB-BONE-EMMC-2G";
+				part-number = "BB-BONEBL-EMMC";
 			};
 
 			/* Beaglebone black has it soldered on */
@@ -265,7 +302,7 @@
 				board-name = "Bone-Black-HDMI";
 				version = "00A0";
 				manufacturer = "Texas Instruments";
-				part-number = "BB-BONELT-HDMI";
+				part-number = "BB-BONEBL-HDMI";
 			};
 
 			/* Beaglebone black has it soldered on (but no audio) */
@@ -276,7 +313,7 @@
 				board-name = "Bone-Black-HDMIN";
 				version = "00A0";
 				manufacturer = "Texas Instruments";
-				part-number = "BB-BONELT-HDMIN";
+				part-number = "BB-BONEBL-HDMIN";
 			};
 		};
 
@@ -323,7 +360,7 @@
 
 		ldo3_reg: regulator@5 {
 			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <3300000>;
+			regulator-max-microvolt = <1800000>;	/* orig 3.3V*/
 			regulator-always-on;
 		};
 
@@ -335,31 +372,30 @@
 
 &cpsw_emac0 {
 	phy_id = <&davinci_mdio>, <0>;
-	phy-mode = "mii";
 };
 
 &cpsw_emac1 {
 	phy_id = <&davinci_mdio>, <1>;
-	phy-mode = "mii";
 };
 
 &mac {
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&cpsw_default>;
 	pinctrl-1 = <&cpsw_sleep>;
-
-};
-
-&davinci_mdio {
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&davinci_mdio_default>;
-	pinctrl-1 = <&davinci_mdio_sleep>;
 };
 
 &mmc1 {
 	status = "okay";
-	vmmc-supply = <&ldo3_reg>;
+	vmmc-supply = <&vmmcsd_fixed>;
 	ti,vcc-aux-disable-is-sleep;
+};
+
+&usb_otg_hs {
+	interface_type = <1>;
+	power = <250>;
+	port0-mode = <3>;
+	port1-mode = <1>;
+	status = "okay";
 };
 
 &usb_otg_hs {
