@@ -64,4 +64,16 @@ config DA8XX_REMOTEPROC
 	  It's safe to say n here if you're not interested in multimedia
 	  offloading.
 
+config PRU_RPROC
+	tristate "AM33xx PRU remoteproc support"
+	depends on EXPERIMENTAL
+	depends on HAS_DMA && SOC_AM33XX
+	select REMOTEPROC
+	select RPMSG
+	default n
+	help
+	  Say y or m here to support AM33xx PRU
+	  This can be either built-in or a loadable module.
+	  If unsure say N.
+
 endmenu
