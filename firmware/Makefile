@@ -152,6 +152,10 @@ fw-shipped-$(CONFIG_CAPE_BEAGLEBONE) += \
 fw-shipped-$(CONFIG_CAPE_BEAGLEBONE) += \
 	BB-BONEBL-EMMC-00A0.dtbo
 
+# I2C capes
+fw-shipped-$(CONFIG_CAPE_BEAGLEBONE) += \
+	BB-I2C1-00A0.dtbo BB-I2C1A1-00A0.dtbo
+
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 
 # Directories which we _might_ need to create, so we have a rule for them.
