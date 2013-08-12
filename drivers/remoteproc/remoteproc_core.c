@@ -21,7 +21,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-
+#define DEBUG
 #define pr_fmt(fmt)    "%s: " fmt, __func__
 
 #include <linux/kernel.h>
@@ -233,6 +233,8 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	void *va;
 	int ret, size, notifyid;
 
+	dev_info(dev->parent, "%s\n", __func__);
+
 	/* actual size of vring (in bytes) */
 	size = vring_size(rvring->len, rvring->align);
 
@@ -358,6 +360,8 @@ static int rproc_handle_vdev(struct rproc *rproc, struct fw_rsc_vdev *rsc,
 	struct device *dev = &rproc->dev;
 	struct rproc_vdev *rvdev;
 	int i, ret;
+
+	dev_info(dev->parent, "%s\n", __func__);
 
 	/* make sure resource isn't truncated */
 	if (sizeof(*rsc) + rsc->num_of_vrings * sizeof(struct fw_rsc_vdev_vring)
@@ -748,6 +752,8 @@ static int rproc_handle_resources(struct rproc *rproc, int len,
 	rproc_handle_resource_t handler;
 	int ret = 0, i;
 
+	dev_info(dev->parent, "%s\n", __func__);
+
 	for (i = 0; i < rproc->table_ptr->num; i++) {
 		int offset = rproc->table_ptr->offset[i];
 		struct fw_rsc_hdr *hdr = (void *)rproc->table_ptr + offset;
@@ -832,12 +838,17 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 	struct resource_table *table, *loaded_table;
 	int ret, tablesz;
 
-	if (!rproc->table_ptr)
+	dev_info(dev->parent, "%s\n", __func__);
+	if (!rproc->table_ptr) {
+		dev_err(dev, "proc->table_ptr is NULL\n");
 		return -ENOMEM;
+	}
 
 	ret = rproc_fw_sanity_check(rproc, fw);
-	if (ret)
+	if (ret) {
+		dev_err(dev, "rproc_fw_sanity_check() failed\n");
 		return ret;
+	}
 
 	dev_info(dev, "Booting fw image %s, size %zd\n", name, fw->size);
 
@@ -930,16 +941,25 @@ clean_up:
 static void rproc_fw_config_virtio(const struct firmware *fw, void *context)
 {
 	struct rproc *rproc = context;
+	struct device *dev = &rproc->dev;
 	struct resource_table *table;
 	int ret, tablesz;
 
-	if (rproc_fw_sanity_check(rproc, fw) < 0)
+	dev_info(dev->parent, "%s\n", __func__);
+
+	if (rproc_fw_sanity_check(rproc, fw) < 0) {
+		dev_err(dev->parent, "%s: rproc_fw_sanity_check failed\n",
+				__func__);
 		goto out;
+	}
 
 	/* look for the resource table */
 	table = rproc_find_rsc_table(rproc, fw,  &tablesz);
-	if (!table)
+	if (!table) {
+		dev_err(dev->parent, "%s: no table failed\n",
+				__func__);
 		goto out;
+	}
 
 	rproc->table_csum = crc32(0, table, tablesz);
 
@@ -950,16 +970,22 @@ static void rproc_fw_config_virtio(const struct firmware *fw, void *context)
 	 * cached_table will be copied into devic memory.
 	 */
 	rproc->cached_table = kmemdup(table, tablesz, GFP_KERNEL);
-	if (!rproc->cached_table)
+	if (!rproc->cached_table) {
+		dev_err(dev->parent, "%s: kmemdup of table failed\n",
+				__func__);
 		goto out;
+	}
 
 	rproc->table_ptr = rproc->cached_table;
 
 	/* count the number of notify-ids */
 	rproc->max_notifyid = -1;
 	ret = rproc_handle_resources(rproc, tablesz, rproc_count_vrings_handler);
-	if (ret)
+	if (ret) {
+		dev_err(dev->parent, "%s: rproc_handle_resources failed\n",
+				__func__);
 		goto out;
+	}
 
 	/* look for virtio devices and register them */
 	ret = rproc_handle_resources(rproc, tablesz, rproc_vdev_handler);
@@ -973,6 +999,9 @@ out:
 static int rproc_add_virtio_devices(struct rproc *rproc)
 {
 	int ret;
+	struct device *dev = &rproc->dev;
+
+	dev_info(dev->parent, "%s\n", __func__);
 
 	/* rproc_del() calls must wait until async loader completes */
 	init_completion(&rproc->firmware_loading_complete);
@@ -1081,6 +1110,8 @@ int rproc_boot(struct rproc *rproc)
 	}
 
 	dev = &rproc->dev;
+
+	dev_info(dev->parent, "%s\n", __func__);
 
 	ret = mutex_lock_interruptible(&rproc->lock);
 	if (ret) {
@@ -1221,6 +1252,8 @@ int rproc_add(struct rproc *rproc)
 {
 	struct device *dev = &rproc->dev;
 	int ret;
+
+	dev_info(dev->parent, "%s\n", __func__);
 
 	ret = device_add(dev);
 	if (ret < 0)

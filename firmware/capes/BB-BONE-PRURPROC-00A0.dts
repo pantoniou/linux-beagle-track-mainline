@@ -235,54 +235,54 @@
 				/* CONFIG=0, ENABLE=1, DISABLE=2 */
 				pru-pwm-dc-ids = <0 1 2>;
 
-				/* definition for the first PRU */
-				pru0 {
-					pru-index = <0>;
-
-					/* offset, size, local */
-					iram = <0x34000 0x02000 0x00000>;		/* code ram (8K) */
-
-					/* offset, size, local, other */
-					dram = <0x00000 0x02000 0x00000 0x10000>;	/* data ram (8K) */
-
-					pctrl = <0x22000>;
-					pdbg  = <0x22400>;
-
-					firmware-elf;
-					firmware = "testpru0";
-
-					/* sysevents signaling ring activity (host, pru)*/
-					vring-sysev = <24 25>;
-
-					resource_table {
-						resource-table;
-						version = <1>;
-
-						pru0_rproc_serial: pru0_vdev_rproc_serial {
-							vdev-rproc-serial;
-
-							/* notification IDs are totally bogus */
-							/* rproc will idr_alloc anyway */
-
-							notifyid = <8>;	/* <- bogus */
-							/* da align num notifyid */
-							vring-0 = <0 16 8 0>;
-							vring-1 = <0 16 8 0>;
-						};
-
-//						pru0_rproc_rpmsg: pru0_vdev_rproc_rpmsg {
-//							vdev-rpmsg;
+//				/* definition for the first PRU */
+//				pru0 {
+//					pru-index = <0>;
+//
+//					/* offset, size, local */
+//					iram = <0x34000 0x02000 0x00000>;		/* code ram (8K) */
+//
+//					/* offset, size, local, other */
+//					dram = <0x00000 0x02000 0x00000 0x10000>;	/* data ram (8K) */
+//
+//					pctrl = <0x22000>;
+//					pdbg  = <0x22400>;
+//
+//					firmware-elf;
+//					firmware = "testpru0";
+//
+//					/* sysevents signaling ring activity (host, pru)*/
+//					vring-sysev = <24 25>;
+//
+//					resource_table {
+//						resource-table;
+//						version = <1>;
+//
+//						pru0_rproc_serial: pru0_vdev_rproc_serial {
+//							vdev-rproc-serial;
 //
 //							/* notification IDs are totally bogus */
 //							/* rproc will idr_alloc anyway */
 //
-//							notifyid = <9>;	/* <- bogus */
+//							notifyid = <8>;	/* <- bogus */
 //							/* da align num notifyid */
-//							vring-0 = <0 16 512 0>;
-//							vring-1 = <0 16 512 0>;
+//							vring-0 = <0 16 8 0>;
+//							vring-1 = <0 16 8 0>;
 //						};
-					};
-				};
+//
+////						pru0_rproc_rpmsg: pru0_vdev_rproc_rpmsg {
+////							vdev-rpmsg;
+////
+////							/* notification IDs are totally bogus */
+////							/* rproc will idr_alloc anyway */
+////
+////							notifyid = <9>;	/* <- bogus */
+////							/* da align num notifyid */
+////							vring-0 = <0 16 512 0>;
+////							vring-1 = <0 16 512 0>;
+////						};
+//					};
+//				};
 
 				/* definition for the second PRU */
 				pru1 {

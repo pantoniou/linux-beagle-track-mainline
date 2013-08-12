@@ -125,7 +125,7 @@
  * XXX error return values should be checked to ensure that they are
  * appropriate
  */
-#undef DEBUG
+#define DEBUG
 
 #include <linux/kernel.h>
 #include <linux/errno.h>
@@ -856,8 +856,12 @@ static int _enable_clocks(struct omap_hwmod *oh)
 
 	pr_debug("omap_hwmod: %s: enabling clocks\n", oh->name);
 
-	if (oh->_clk)
+	if (oh->_clk) {
+		pr_debug("omap_hwmod: %s: clk_enable(%s)\n", oh->name, oh->main_clk);
 		clk_enable(oh->_clk);
+	} else {
+		pr_debug("omap_hwmod: %s: no oh->_clk\n", oh->name);
+	}
 
 	p = oh->slave_ports.next;
 
