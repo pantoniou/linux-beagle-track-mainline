@@ -162,6 +162,9 @@ fw-shipped-$(CONFIG_CAPE_BEAGLEBONE) += BB-BONE-PRUSS-00A0.dtbo
 # PRU remoteproc based cape
 fw-shipped-$(CONFIG_CAPE_BEAGLEBONE) += BB-BONE-PRURPROC-00A0.dtbo
 
+# Platform device test cape
+fw-shipped-$(CONFIG_CAPE_BEAGLEBONE) += BB-PDEVTEST-00A0.dtbo
+
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 
 # Directories which we _might_ need to create, so we have a rule for them.
