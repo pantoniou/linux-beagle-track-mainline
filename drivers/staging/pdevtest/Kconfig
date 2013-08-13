@@ -1,0 +1,13 @@
+config PDEV_TEST
+	tristate "Platform device tester"
+	depends on OF
+	default n
+	---help---
+	  This driver tests correct operation of platform device 
+	  creation and removal.
+	  Upon loading you can use the sysfs interface to register/unregister
+	  the platform device nodes that are located underneath this device's
+	  node.
+
+	  To compile this driver as a module, choose M here. The module
+	  will be called echo.
