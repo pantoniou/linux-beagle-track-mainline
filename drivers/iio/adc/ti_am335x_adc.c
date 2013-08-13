@@ -26,7 +26,7 @@
 #include <linux/of_device.h>
 #include <linux/iio/machine.h>
 #include <linux/iio/driver.h>
-
+#include <linux/math64.h>
 #include <linux/mfd/ti_am335x_tscadc.h>
 
 struct tiadc_device {
@@ -118,7 +118,8 @@ static int tiadc_channel_init(struct iio_dev *indio_dev, int channels)
 		chan->type = IIO_VOLTAGE;
 		chan->indexed = 1;
 		chan->channel = adc_dev->channel_line[i];
-		chan->info_mask_separate = BIT(IIO_CHAN_INFO_RAW);
+		chan->info_mask_separate = BIT(IIO_CHAN_INFO_RAW) |
+						BIT(IIO_CHAN_INFO_SCALE);
 		chan->datasheet_name = chan_name_ain[chan->channel];
 		chan->scan_type.sign = 'u';
 		chan->scan_type.realbits = 12;
@@ -149,7 +150,7 @@ static int tiadc_read_raw(struct iio_dev *indio_dev,
 				(IDLE_TIMEOUT * adc_dev->channels);
 	step_en = get_adc_step_mask(adc_dev);
 	am335x_tsc_se_set(adc_dev->mfd_tscadc, step_en);
-
+ 
 	/* Wait for ADC sequencer to complete sampling */
 	while (tiadc_readl(adc_dev, REG_ADCFSM) & SEQ_STATUS) {
 		if (time_after(jiffies, timeout))
@@ -188,6 +189,18 @@ static int tiadc_read_raw(struct iio_dev *indio_dev,
 			found = true;
 			*val = read;
 		}
+	}
+
+	switch (mask){
+		case IIO_CHAN_INFO_RAW : /*Do nothing. Above code works fine.*/
+					break;
+		case IIO_CHAN_INFO_SCALE : {
+			/*12 Bit adc. Scale value for 1800mV AVDD. Ideally
+			AVDD should come from DT.*/
+			*val = div_u64( (u64)(*val) * 1800 , 4096);
+			break;
+		}
+		default: break;
 	}
 
 	if (found == false)
