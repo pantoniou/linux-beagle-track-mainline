@@ -23,6 +23,7 @@
 #include <linux/spinlock.h>
 #include <linux/topology.h>
 #include <linux/notifier.h>
+#include <linux/i2c.h>
 
 #include <asm/byteorder.h>
 #include <asm/errno.h>
@@ -112,6 +113,26 @@ static inline int of_node_check_flag(struct device_node *n, unsigned long flag)
 static inline void of_node_set_flag(struct device_node *n, unsigned long flag)
 {
 	set_bit(flag, &n->_flags);
+}
+
+static inline void of_node_clear_flag(struct device_node *n, unsigned long flag)
+{
+	clear_bit(flag, &n->_flags);
+}
+
+static inline int of_property_check_flag(struct property *p, unsigned long flag)
+{
+	return test_bit(flag, &p->_flags);
+}
+
+static inline void of_property_set_flag(struct property *p, unsigned long flag)
+{
+	set_bit(flag, &p->_flags);
+}
+
+static inline void of_property_clear_flag(struct property *p, unsigned long flag)
+{
+	clear_bit(flag, &p->_flags);
 }
 
 extern struct device_node *of_find_all_nodes(struct device_node *prev);
@@ -286,6 +307,46 @@ extern int of_parse_phandle_with_fixed_args(const struct device_node *np,
 	struct of_phandle_args *out_args);
 extern int of_count_phandle_with_args(const struct device_node *np,
 	const char *list_name, const char *cells_name);
+
+#if defined(CONFIG_OF_DYNAMIC)
+extern int of_property_notify(int action, struct device_node *np,
+			      struct property *prop);
+#else
+static inline int of_property_notify(int action, struct device_node *np,
+			      struct property *prop)
+{
+	return 0;
+}
+#endif
+
+#ifdef CONFIG_PROC_DEVICETREE
+
+extern void of_add_proc_dt_entry(struct device_node *dn);
+extern void of_remove_proc_dt_entry(struct device_node *dn);
+
+extern void of_add_proc_dt_prop_entry(struct device_node *np,
+		struct property *prop);
+
+extern void of_remove_proc_dt_prop_entry(struct device_node *np,
+		struct property *prop);
+
+extern void of_update_proc_dt_prop_entry(struct device_node *np,
+		struct property *newprop, struct property *oldprop);
+#else
+
+static inline void of_add_proc_dt_entry(struct device_node *dn) { }
+static inline void of_remove_proc_dt_entry(struct device_node *dn) { }
+
+static inline void of_add_proc_dt_prop_entry(struct device_node *np,
+		struct property *prop) { }
+
+static inline void of_remove_proc_dt_prop_entry(struct device_node *np,
+		struct property *prop) { }
+
+static inline void of_update_proc_dt_prop_entry(struct device_node *np,
+		struct property *newprop, struct property *oldprop) { }
+
+#endif
 
 extern void of_alias_scan(void * (*dt_alloc)(u64 size, u64 align));
 extern int of_alias_get_id(struct device_node *np, const char *stem);
@@ -600,6 +661,194 @@ extern void proc_device_tree_remove_prop(struct proc_dir_entry *pde,
 extern void proc_device_tree_update_prop(struct proc_dir_entry *pde,
 					 struct property *newprop,
 					 struct property *oldprop);
+#endif
+
+/**
+ * General utilities for working with live trees.
+ *
+ * All functions with two leading underscores operate
+ * without taking node references, so you either have to
+ * own the devtree lock or work on detached trees only.
+ */
+
+#ifdef CONFIG_OF
+
+/* iterator for internal use; not references, neither affects devtree lock */
+#define __for_each_child_of_node(dn, chld) \
+	for (chld = (dn)->child; chld != NULL; chld = chld->sibling)
+
+void __of_free_property(struct property *prop);
+void __of_free_tree(struct device_node *node);
+struct property *__of_copy_property(const struct property *prop, gfp_t flags);
+struct device_node *__of_create_empty_node( const char *name,
+		const char *type, const char *full_name,
+		phandle phandle, gfp_t flags);
+struct device_node *__of_find_node_by_full_name(struct device_node *node,
+		const char *full_name);
+int of_multi_prop_cmp(const struct property *prop, const char *value);
+
+#else /* !CONFIG_OF */
+
+#define __for_each_child_of_node(dn, chld) \
+	while (0)
+
+static inline void __of_free_property(struct property *prop) { }
+
+static inline void __of_free_tree(struct device_node *node) { }
+
+static inline struct property *__of_copy_property(const struct property *prop,
+		gfp_t flags)
+{
+	return NULL;
+}
+
+static inline struct device_node *__of_create_empty_node( const char *name,
+		const char *type, const char *full_name,
+		phandle phandle, gfp_t flags)
+{
+	return NULL;
+}
+
+static inline struct device_node *__of_find_node_by_full_name(struct device_node *node,
+		const char *full_name)
+{
+	return NULL;
+}
+
+static inline int of_multi_prop_cmp(const struct property *prop, const char *value)
+{
+	return -1;
+}
+
+#endif	/* !CONFIG_OF */
+
+
+/* illegal phandle value (set when unresolved) */
+#define OF_PHANDLE_ILLEGAL	0xdeadbeef
+
+#ifdef CONFIG_OF_RESOLVE
+
+int of_resolve(struct device_node *resolve);
+
+#else
+
+static inline int of_resolve(struct device_node *resolve)
+{
+	return -ENOTSUPP;
+}
+
+#endif
+
+/**
+ * Overlay support
+ */
+
+/**
+ * struct of_overlay_log_entry	- Holds a DT log entry
+ * @node:	list_head for the log list
+ * @action:	notifier action
+ * @np:		pointer to the device node affected
+ * @prop:	pointer to the property affected
+ * @old_prop:	hold a pointer to the original property
+ *
+ * Every modification of the device tree during application of the
+ * overlay is held in a list of of_overlay_log_entry structures.
+ * That way we can recover from a partial application, or we can
+ * revert the overlay properly.
+ */
+struct of_overlay_log_entry {
+	struct list_head node;
+	unsigned long action;
+	struct device_node *np;
+	struct property *prop;
+	struct property *old_prop;
+};
+
+/**
+ * struct of_overlay_device_entry	- Holds an overlay device entry
+ * @node:	list_head for the device list
+ * @np:		device node pointer to the device node affected
+ * @pdev:	pointer to the platform device affected
+ * @client:	pointer to the I2C client device affected
+ * @state:	new device state
+ * @prevstate:	previous device state
+ *
+ * When the overlay results in a device node's state to change this
+ * fact is recorded in a list of device entries. After the overlay
+ * is applied we can create/destroy the platform devices according
+ * to the new state of the live tree.
+ */
+struct of_overlay_device_entry {
+	struct list_head node;
+	struct device_node *np;
+	struct platform_device *pdev;
+	struct i2c_client *client;
+	int prevstate;
+	int state;
+};
+
+/**
+ * struct of_overlay_info	- Holds a single overlay info
+ * @target:	target of the overlay operation
+ * @overlay:	pointer to the overlay contents node
+ * @lock:	Lock to hold when accessing the lists
+ * @le_list:	List of the overlay logs
+ * @de_list:	List of the overlay records
+ * @notifier:	of reconfiguration notifier
+ *
+ * Holds a single overlay state, including all the overlay logs &
+ * records.
+ */
+struct of_overlay_info {
+	struct device_node *target;
+	struct device_node *overlay;
+	struct mutex lock;
+	struct list_head le_list;
+	struct list_head de_list;
+	struct notifier_block notifier;
+	int device_depth;
+};
+
+#ifdef CONFIG_OF_OVERLAY
+
+int of_overlay(int count, struct of_overlay_info *ovinfo_tab);
+int of_overlay_revert(int count, struct of_overlay_info *ovinfo_tab);
+
+int of_fill_overlay_info(struct device_node *info_node,
+		struct of_overlay_info *ovinfo);
+int of_build_overlay_info(struct device_node *tree,
+		int *cntp, struct of_overlay_info **ovinfop);
+int of_free_overlay_info(int cnt, struct of_overlay_info *ovinfo);
+
+#else
+
+static inline int of_overlay(int count, struct of_overlay_info *ovinfo_tab)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_overlay_revert(int count, struct of_overlay_info *ovinfo_tab)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_fill_overlay_info(struct device_node *info_node,
+		struct of_overlay_info *ovinfo)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_build_overlay_info(struct device_node *tree,
+		int *cntp, struct of_overlay_info **ovinfop)
+{
+	return -ENOTSUPP;
+}
+
+int of_free_overlay_info(int cnt, struct of_overlay_info *ovinfo)
+{
+	return -ENOTSUPP;
+}
+
 #endif
 
 #endif /* _LINUX_OF_H */
