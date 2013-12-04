@@ -88,4 +88,11 @@ config OF_OVERLAY
 	select OF_DYNAMIC
 	select OF_RESOLVE
 
+config OF_CONFIGFS
+	bool "Device Tree Overlay ConfigFS interface"
+	select CONFIGFS_FS
+	select OF_OVERLAY
+	help
+	  Enable a simple user-space driven DT overlay interface.
+
 endmenu # OF
