@@ -91,4 +91,11 @@ config OF_OVERLAY
 	select OF_DEVICE
 	select OF_RESOLVE
 
+config OF_CONFIGFS
+	bool "OpenFirmware Overlay ConfigFS interface"
+	select CONFIGFS_FS
+	select OF_OVERLAY
+	help
+	  Enable a simple user-space driver DT overlay interface.
+
 endmenu # OF
