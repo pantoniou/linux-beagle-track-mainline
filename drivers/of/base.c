@@ -245,12 +245,30 @@ static int __of_node_add(struct device_node *np)
 int of_node_add(struct device_node *np)
 {
 	int rc = 0;
-	kobject_init(&np->kobj, &of_node_ktype);
+
+	BUG_ON(!of_node_is_initialized(np));
+
+	if (!of_kset) {
+		pr_warn("%s: of_node_add before of_init on %s\n",
+				__func__, np->full_name);
+		return 0;
+	}
+
 	mutex_lock(&of_aliases_mutex);
-	if (of_kset)
-		rc = __of_node_add(np);
+	rc = __of_node_add(np);
 	mutex_unlock(&of_aliases_mutex);
 	return rc;
+}
+
+/*
+ * Initialize a new device node
+ *
+ * At the moment it is just initializing the kobj of the node.
+ * This occurs during unflattening and when creating dynamic nodes.
+ */
+void of_node_init(struct device_node *np)
+{
+	kobject_init(&np->kobj, &of_node_ktype);
 }
 
 #if defined(CONFIG_OF_DYNAMIC)
@@ -258,32 +276,73 @@ static void of_node_remove(struct device_node *np)
 {
 	struct property *pp;
 
-	for_each_property_of_node(np, pp)
-		sysfs_remove_bin_file(&np->kobj, &pp->attr);
+	BUG_ON(!of_node_is_initialized(np));
 
-	kobject_del(&np->kobj);
+	/* only remove properties if on sysfs */
+	if (of_node_is_attached(np)) {
+		for_each_property_of_node(np, pp)
+			sysfs_remove_bin_file(&np->kobj, &pp->attr);
+		/* delete from sysfs */
+		kobject_del(&np->kobj);
+	}
+
+	/* finally remove the kobj_init ref */
+	of_node_put(np);
 }
 #endif
+
+/* recursively attach the tree */
+static __init int __of_populate(struct device_node *np)
+{
+	struct device_node *child;
+	int rc;
+
+	/* add the parent first */
+	rc = __of_node_add(np);
+	if (rc)
+		return rc;
+
+	/* the children afterwards */
+	__for_each_child_of_node(np, child) {
+		rc = __of_populate(child);
+		if (rc)
+			return rc;
+	}
+
+	return 0;
+}
 
 static int __init of_init(void)
 {
 	struct device_node *np;
+	int rc;
 
 	of_kset = kset_create_and_add("devicetree", NULL, firmware_kobj);
 	if (!of_kset)
 		return -ENOMEM;
 
-	/* Make sure all nodes added before this time get added to sysfs */
 	mutex_lock(&of_aliases_mutex);
-	for_each_of_allnodes(np)
-		__of_node_add(np);
-	mutex_unlock(&of_aliases_mutex);
+
+	/* find root */
+	np = of_find_node_by_path("/");
+	if (np == NULL) {
+		rc = -EINVAL;
+		goto out;
+	}
+	/* populate */
+	rc = __of_populate(np);
+	of_node_put(np);
 
 	/* Symlink in /proc as required by userspace ABI */
-	if (of_allnodes)
-		proc_symlink("device-tree", NULL, "/sys/firmware/devicetree/base");
+	if (rc != 0)
+		goto out;
 
-	return 0;
+	proc_symlink("device-tree", NULL, "/sys/firmware/devicetree/base");
+
+out:
+	mutex_unlock(&of_aliases_mutex);
+
+	return rc;
 }
 core_initcall(of_init);
 
@@ -1587,6 +1646,10 @@ static int of_property_notify(int action, struct device_node *np,
 {
 	struct of_prop_reconfig pr;
 
+	/* only call notifiers if the node is attached */
+	if (!of_node_is_attached(np))
+		return 0;
+
 	pr.dn = np;
 	pr.prop = prop;
 	return of_reconfig_notify(action, &pr);
@@ -1626,11 +1689,8 @@ int of_add_property(struct device_node *np, struct property *prop)
 	*next = prop;
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
-	/* at early boot, bail hear and defer setup to of_init() */
-	if (!of_kset)
-		return 0;
-
-	__of_add_property(np, prop);
+	if (of_node_is_attached(np))
+		__of_add_property(np, prop);
 
 	return 0;
 }
