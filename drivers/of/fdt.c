@@ -327,7 +327,8 @@ static void * unflatten_dt_node(struct boot_param_header *blob,
 		if (!np->type)
 			np->type = "<NULL>";
 
-		of_node_add(np);
+		/* initialize node (do not add) */
+		of_node_init(np);
 	}
 	while (tag == OF_DT_BEGIN_NODE || tag == OF_DT_NOP) {
 		if (tag == OF_DT_NOP)
