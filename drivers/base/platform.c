@@ -955,6 +955,83 @@ struct bus_type platform_bus_type = {
 };
 EXPORT_SYMBOL_GPL(platform_bus_type);
 
+#ifdef CONFIG_OF_OVERLAY
+
+static int platform_handler_create(struct of_overlay_device_entry *de,
+		int revert)
+{
+	struct device_node *dn;
+	struct platform_device *pdev_parent, *pdev;
+
+	if (!de || !de->np)
+		return -ENOTSUPP;
+
+	dn = de->np;
+
+	pdev_parent = of_find_device_by_node(dn->parent);
+	if (pdev_parent == NULL)
+		return -ENOTSUPP;
+
+	pdev = of_platform_device_create(dn, NULL, &pdev_parent->dev);
+	of_dev_put(pdev_parent);
+
+	if (pdev == NULL) {
+		pr_err("%s: failed to create platform device "
+				"for '%s'\n",
+				__func__, dn->full_name);
+		/* of_platform_device_create tosses the real error code */
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int platform_handler_remove(struct of_overlay_device_entry *de,
+		int revert)
+{
+	struct device_node *dn;
+	struct platform_device *pdev;
+
+	if (!de || !de->np)
+		return -ENOTSUPP;
+
+	dn = de->np;
+
+	pdev = of_find_device_by_node(dn);
+	if (pdev == NULL)
+		return -ENOTSUPP;
+
+	/* unregister takes one ref away */
+	platform_device_unregister(pdev);
+
+	/* and put the reference of the find */
+	of_dev_put(pdev);
+
+	return 0;
+}
+
+static const struct of_overlay_handler_ops platform_handler_ops = {
+	.create	= platform_handler_create,
+	.remove = platform_handler_remove,
+};
+
+static struct of_overlay_handler platform_handler = {
+	.name = "platform",
+	.ops = &platform_handler_ops,
+};
+
+static int __init platform_bus_handler_register(void)
+{
+	return of_overlay_handler_register(&platform_handler);
+}
+
+#else
+static inline int platform_bus_handler_register(void)
+{
+	return 0;
+}
+#endif
+
 int __init platform_bus_init(void)
 {
 	int error;
@@ -963,10 +1040,22 @@ int __init platform_bus_init(void)
 
 	error = device_register(&platform_bus);
 	if (error)
-		return error;
-	error =  bus_register(&platform_bus_type);
+		goto err_out;
+
+	error = bus_register(&platform_bus_type);
 	if (error)
-		device_unregister(&platform_bus);
+		goto err_unreg_dev;
+
+	error = platform_bus_handler_register();
+	if (error)
+		goto err_unreg_bus;
+
+	return 0;
+err_unreg_bus:
+	bus_unregister(&platform_bus_type);
+err_unreg_dev:
+	device_unregister(&platform_bus);
+err_out:
 	return error;
 }
 

@@ -13,13 +13,84 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
-#include <linux/i2c.h>
 #include <linux/string.h>
 #include <linux/ctype.h>
 #include <linux/errno.h>
 #include <linux/string.h>
 #include <linux/slab.h>
 #include <linux/err.h>
+
+/* protect the handlers list */
+static DEFINE_MUTEX(of_handler_mutex);
+static struct list_head of_handler_list = LIST_HEAD_INIT(of_handler_list);
+
+int of_overlay_handler_register(struct of_overlay_handler *handler)
+{
+	/* guard against bad data */
+	if (!handler || !handler->name || !handler->ops ||
+		!handler->ops->create || !handler->ops->remove)
+		return -EINVAL;
+
+	mutex_lock(&of_handler_mutex);
+	list_add_tail(&handler->list, &of_handler_list);
+	mutex_unlock(&of_handler_mutex);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(of_overlay_handler_register);
+
+void of_overlay_handler_unregister(struct of_overlay_handler *handler)
+{
+	struct of_overlay_handler *curr;
+
+	mutex_lock(&of_handler_mutex);
+	list_for_each_entry(curr, &of_handler_list, list) {
+		if (handler == curr) {
+			list_del(&handler->list);
+			break;
+		}
+	}
+	mutex_unlock(&of_handler_mutex);
+}
+EXPORT_SYMBOL_GPL(of_overlay_handler_unregister);
+
+static int handler_create(struct of_overlay_device_entry *entry, int revert)
+{
+	struct of_overlay_handler *handler;
+	int ret;
+
+	mutex_lock(&of_handler_mutex);
+	list_for_each_entry(handler, &of_handler_list, list) {
+		ret = (*handler->ops->create)(entry, revert);
+		/* ENOTSUPP means try next */
+		if (ret == -ENOTSUPP)
+			continue;
+		/* anything else means something happened */
+		break;
+	}
+	mutex_unlock(&of_handler_mutex);
+
+	return ret;
+}
+
+static int handler_remove(struct of_overlay_device_entry *entry, int revert)
+{
+	struct of_overlay_handler *handler;
+	int ret;
+
+	mutex_lock(&of_handler_mutex);
+	list_for_each_entry(handler, &of_handler_list, list) {
+		ret = (*handler->ops->remove)(entry, revert);
+		/* ENOTSUPP means try next */
+		if (ret == -ENOTSUPP)
+			continue;
+		/* anything else means something happened */
+		break;
+	}
+	mutex_unlock(&of_handler_mutex);
+
+	return ret;
+}
 
 /**
  * Apply a single overlay node recursively.
@@ -216,7 +287,6 @@ static int of_overlay_log_entry_entry_add(struct of_overlay_info *ovinfo,
  */
 static void of_overlay_device_entry_entry_add(struct of_overlay_info *ovinfo,
 		struct device_node *node,
-		struct platform_device *pdev, struct i2c_client *client,
 		int prevstate, int state)
 {
 	struct of_overlay_device_entry *de;
@@ -240,10 +310,6 @@ static void of_overlay_device_entry_entry_add(struct of_overlay_info *ovinfo,
 
 	if (de->np == NULL)
 		de->np = of_node_get(node);
-	if (de->pdev == NULL && pdev)
-		de->pdev = of_dev_get(pdev);
-	if (de->client == NULL && client)
-		de->client = i2c_use_client(client);
 	if (fresh)
 		de->prevstate = prevstate;
 	de->state = state;
@@ -268,8 +334,6 @@ static int of_overlay_notify(struct notifier_block *nb,
 	struct device_node *node;
 	struct property *prop, *sprop, *cprop;
 	struct of_prop_reconfig *pr;
-	struct platform_device *pdev;
-	struct i2c_client *client;
 	struct device_node *tnode;
 	int depth;
 	int prevstate, state;
@@ -309,8 +373,6 @@ static int of_overlay_notify(struct notifier_block *nb,
 		return notifier_from_errno(err);
 
 	/* come up with the device entry (if any) */
-	pdev = NULL;
-	client = NULL;
 	state = 0;
 	prevstate = 0;
 
@@ -325,8 +387,6 @@ static int of_overlay_notify(struct notifier_block *nb,
 		prevstate = of_find_property(node, "compatible", NULL) &&
 			of_device_is_available(node);
 		state = 0;
-		pdev = of_find_device_by_node(node);
-		client = of_find_i2c_device_by_node(node);
 		break;
 	case OF_RECONFIG_ADD_PROPERTY:
 	case OF_RECONFIG_REMOVE_PROPERTY:
@@ -375,13 +435,7 @@ static int of_overlay_notify(struct notifier_block *nb,
 		goto out;
 	}
 
-	if (state == 0) {
-		pdev = of_find_device_by_node(node);
-		client = of_find_i2c_device_by_node(node);
-	}
-
-	of_overlay_device_entry_entry_add(ovinfo, node, pdev, client,
-			prevstate, state);
+	of_overlay_device_entry_entry_add(ovinfo, node, prevstate, state);
 out:
 
 	return notifier_from_errno(err);
@@ -407,104 +461,21 @@ static int of_overlay_prep_one(struct of_overlay_info *ovinfo)
 static int of_overlay_device_entry_change(struct of_overlay_info *ovinfo,
 		struct of_overlay_device_entry *de, int revert)
 {
-	struct i2c_adapter *adap = NULL;
-	struct i2c_client *client;
-	struct platform_device *pdev, *parent_pdev = NULL;
 	int state;
-	struct device_node *np;
-	bool is_pci = false;
-
-	np = de->np;
-	while (np && !is_pci) {
-		is_pci = np->type && !of_node_cmp(np->type, "pci");
-		np = np->parent;
-	}
-
-	if (is_pci) {
-		pr_debug("%s: Node %s is pci node, leaving it alone\n",
-			__func__, np->full_name);
-		return 0;
-	}
+	int ret;
 
 	state = !!de->state ^ !!revert;
 
-	if (de->np && de->np->parent) {
-		pr_debug("%s: parent is %s\n",
-				__func__, de->np->parent->full_name);
-		adap = of_find_i2c_adapter_by_node(de->np->parent);
-		if (adap == NULL)
-			parent_pdev = of_find_device_by_node(de->np->parent);
-	}
+	if (state)
+		ret = handler_create(de, revert);
+	else
+		ret = handler_remove(de, revert);
 
-	if (state) {
-
-		/* try to see if it's an I2C client node */
-		if (adap == NULL) {
-
-			pr_debug("%s: creating new platform device "
-					"new_node='%s' %p\n",
-					__func__, de->np->full_name, de->np);
-
-			pdev = of_platform_device_create(de->np, NULL,
-					parent_pdev ? &parent_pdev->dev : NULL);
-			if (pdev == NULL) {
-				pr_warn("%s: Failed to create platform device "
-						"for '%s'\n",
-						__func__, de->np->full_name);
-			} else
-				de->pdev = pdev;
-
-		} else {
-
-			client = of_find_i2c_device_by_node(de->np);
-			if (client != NULL) {
-				/* bus already created the device; do nothing */
-				put_device(&client->dev);
-			} else {
-				pr_debug("%s: creating new i2c_client device "
-						"new_node='%s' %p\n",
-						__func__, de->np->full_name, de->np);
-
-				client = of_i2c_register_device(adap, de->np);
-
-				if (client == NULL) {
-					pr_warn("%s: Failed to create i2c client device "
-							"for '%s'\n",
-							__func__, de->np->full_name);
-				} else
-					de->client = client;
-			}
-		}
-
-	} else {
-
-		if (de->pdev) {
-			pr_debug("%s: removing pdev %s\n", __func__,
-					dev_name(&de->pdev->dev));
-			platform_device_unregister(de->pdev);
-			de->pdev = NULL;
-		}
-
-		if (de->client) {
-			pr_debug("%s: removing i2c client %s\n", __func__,
-					dev_name(&de->client->dev));
-			i2c_unregister_device(de->client);
-			de->client = NULL;
-		}
-	}
-
-	if (adap) {
-		pr_debug("%s: removing adap %s\n", __func__,
-				dev_name(&adap->dev));
-		put_device(&adap->dev);
-	}
-
-	if (parent_pdev) {
-		pr_debug("%s: removing parent_pdev %s\n", __func__,
-				dev_name(&parent_pdev->dev));
-		of_dev_put(parent_pdev);
-	}
-
+	if (ret != 0 && ret != -ENOTSUPP)
+		pr_warn("%s: Failed to %s device "
+				"for node '%s'\n", __func__,
+				state ? "create" : "remove",
+				de->np->full_name);
 	return 0;
 }
 
@@ -513,7 +484,7 @@ static int of_overlay_device_entry_change(struct of_overlay_info *ovinfo,
  * Either due to an error, or due to normal overlay removal.
  * Using the log entries, we revert any change to the live tree.
  * In the same manner, using the device entries we enable/disable
- * the platform devices appropriately.
+ * the devices appropriately.
  */
 static void of_overlay_revert_one(struct of_overlay_info *ovinfo)
 {
@@ -627,7 +598,7 @@ static void of_overlay_revert_one(struct of_overlay_info *ovinfo)
  * We unregister the notifier, and in the case on an error we
  * revert the overlay.
  * If the overlay applied correctly, we iterare over the device entries
- * and create/destroy the platform devices appropriately.
+ * and create/destroy the devices appropriately.
  */
 static int of_overlay_post_one(struct of_overlay_info *ovinfo, int err)
 {
@@ -649,9 +620,10 @@ static int of_overlay_post_one(struct of_overlay_info *ovinfo, int err)
 			of_node_put(de->np);
 			list_del(&de->node);
 			kfree(de);
-		} else {
-			of_overlay_device_entry_change(ovinfo, de, 0);
+			continue;
 		}
+
+		of_overlay_device_entry_change(ovinfo, de, 0);
 	}
 
 	return 0;

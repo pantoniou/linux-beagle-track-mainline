@@ -89,6 +89,19 @@ int of_pci_parse_bus_range(struct device_node *node, struct resource *res)
 }
 EXPORT_SYMBOL_GPL(of_pci_parse_bus_range);
 
+struct pci_bus *of_find_pci_bus_by_node(struct device_node *node)
+{
+	struct device *dev;
+
+	dev = bus_find_device(&pci_bus_type, NULL, node,
+					of_dev_node_match);
+	if (!dev)
+		return NULL;
+
+	return to_pci_bus(dev);
+}
+EXPORT_SYMBOL_GPL(of_find_pci_bus_by_node);
+
 #ifdef CONFIG_PCI_MSI
 
 static LIST_HEAD(of_pci_msi_chip_list);

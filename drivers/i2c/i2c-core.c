@@ -1076,6 +1076,83 @@ struct i2c_adapter *of_find_i2c_adapter_by_node(struct device_node *node)
 	return i2c_verify_adapter(dev);
 }
 EXPORT_SYMBOL(of_find_i2c_adapter_by_node);
+
+#ifdef CONFIG_OF_OVERLAY
+static int i2c_handler_create(struct of_overlay_device_entry *de,
+		int revert)
+{
+	struct device_node *dn;
+	struct i2c_adapter *adap;
+	struct i2c_client *client;
+
+	if (!de || !de->np)
+		return -ENOTSUPP;
+
+	dn = de->np;
+
+	adap = of_find_i2c_adapter_by_node(dn->parent);
+	if (adap == NULL)
+		return -ENOTSUPP;
+
+	client = of_i2c_register_device(adap, dn);
+	put_device(&adap->dev);
+
+	if (client == NULL) {
+		pr_err("%s: failed to create i2c client device "
+				"for '%s'\n",
+				__func__, dn->full_name);
+		/* of_i2c_device_create tosses the real error code */
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int i2c_handler_remove(struct of_overlay_device_entry *de,
+		int revert)
+{
+	struct device_node *dn;
+	struct i2c_client *client;
+
+	if (!de || !de->np)
+		return -ENOTSUPP;
+
+	dn = de->np;
+
+	client = of_find_i2c_device_by_node(dn);
+	if (client == NULL)
+		return -ENOTSUPP;
+
+	/* unregister takes one ref away */
+	i2c_unregister_device(client);
+
+	/* and put the reference of the find */
+	put_device(&client->dev);
+
+	return 0;
+}
+
+static const struct of_overlay_handler_ops i2c_handler_ops = {
+	.create	= i2c_handler_create,
+	.remove = i2c_handler_remove,
+};
+
+static struct of_overlay_handler i2c_handler = {
+	.name = "i2c",
+	.ops = &i2c_handler_ops,
+};
+
+static int __init i2c_bus_handler_register(void)
+{
+	return of_overlay_handler_register(&i2c_handler);
+}
+#else
+static inline int i2c_bus_handler_register(void)
+{
+	return 0;
+}
+#endif
+
 #else
 static void of_i2c_register_devices(struct i2c_adapter *adap) { }
 #endif /* CONFIG_OF */
@@ -1671,8 +1748,14 @@ static int __init i2c_init(void)
 	retval = i2c_add_driver(&dummy_driver);
 	if (retval)
 		goto class_err;
-	return 0;
 
+	retval = i2c_bus_handler_register();
+	if (retval)
+		goto bus_handler_err;
+
+	return 0;
+bus_handler_err:
+	i2c_del_driver(&dummy_driver);
 class_err:
 #ifdef CONFIG_I2C_COMPAT
 	class_compat_unregister(i2c_adapter_compat_class);
