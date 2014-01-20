@@ -2363,6 +2363,71 @@ EXPORT_SYMBOL_GPL(spi_write_then_read);
 
 /*-------------------------------------------------------------------------*/
 
+#if IS_ENABLED(CONFIG_OF)
+
+static int of_spi_notify(struct notifier_block *nb,
+				unsigned long action, void *arg)
+{
+	struct device_node *dn;
+	struct spi_master *master;
+	struct spi_device *spi;
+	int state;
+
+	state = of_reconfig_get_state_change(action, arg);
+	if (state == -1)
+		return NOTIFY_OK;
+
+	switch (action) {
+	case OF_RECONFIG_ATTACH_NODE:
+	case OF_RECONFIG_DETACH_NODE:
+		dn = arg;
+		break;
+	case OF_RECONFIG_ADD_PROPERTY:
+	case OF_RECONFIG_REMOVE_PROPERTY:
+	case OF_RECONFIG_UPDATE_PROPERTY:
+		dn = ((struct of_prop_reconfig *)arg)->dn;
+		break;
+	default:
+		return NOTIFY_OK;
+	}
+
+	if (state) {
+
+		master = of_find_spi_master_by_node(dn->parent);
+		if (master == NULL)
+			return NOTIFY_OK;	/* not for us */
+
+		spi = of_register_spi_device(master, dn);
+		put_device(&master->dev);
+
+		if (IS_ERR(spi)) {
+			pr_err("%s: failed to create for '%s'\n",
+					__func__, dn->full_name);
+			return notifier_from_errno(PTR_ERR(spi));
+		}
+
+	} else {
+
+		/* find our device by node */
+		spi = of_find_spi_device_by_node(dn);
+		if (spi == NULL)
+			return NOTIFY_OK;	/* no? not meant for us */
+
+		/* unregister takes one ref away */
+		spi_unregister_device(spi);
+
+		/* and put the reference of the find */
+		put_device(&spi->dev);
+
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block spi_of_notifier;
+
+#endif
+
 static int __init spi_init(void)
 {
 	int	status;
@@ -2380,8 +2445,19 @@ static int __init spi_init(void)
 	status = class_register(&spi_master_class);
 	if (status < 0)
 		goto err2;
-	return 0;
 
+#if IS_ENABLED(CONFIG_OF)
+	spi_of_notifier.notifier_call = of_spi_notify;
+	status = of_reconfig_notifier_register(&spi_of_notifier);
+	if (status)
+		goto err3;
+#endif
+
+	return 0;
+#if IS_ENABLED(CONFIG_OF)
+err3:
+	class_unregister(&spi_master_class);
+#endif
 err2:
 	bus_unregister(&spi_bus_type);
 err1:
