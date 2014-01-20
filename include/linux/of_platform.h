@@ -84,4 +84,14 @@ static inline int of_platform_populate(struct device_node *root,
 static inline void of_platform_depopulate(struct device *parent) { }
 #endif
 
+#ifdef CONFIG_OF_DYNAMIC
+extern int of_platform_register_reconfig_notifier(void);
+#else
+static inline int of_platform_register_reconfig_notifier(void)
+{
+	return 0;
+}
+#endif
+
+
 #endif	/* _LINUX_OF_PLATFORM_H */
