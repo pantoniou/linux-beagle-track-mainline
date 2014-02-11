@@ -136,7 +136,7 @@ static void __init dtb_setup_hpet(void)
 
 static void __init dtb_lapic_setup(void)
 {
-#ifdef CONFIG_X86_LOCAL_APIC
+#if defined(CONFIG_X86_IO_APIC) && defined(CONFIG_IRQ_DOMAIN)
 	struct device_node *dn;
 	struct resource r;
 	int ret;
@@ -162,7 +162,7 @@ static void __init dtb_lapic_setup(void)
 #endif
 }
 
-#ifdef CONFIG_X86_IO_APIC
+#if defined(CONFIG_X86_IO_APIC) && defined(CONFIG_IRQ_DOMAIN)
 static unsigned int ioapic_id;
 
 static void __init dtb_add_ioapic(struct device_node *dn)
@@ -239,7 +239,7 @@ void __init x86_dtb_init(void)
 	dtb_apic_setup();
 }
 
-#ifdef CONFIG_X86_IO_APIC
+#if defined(CONFIG_X86_IO_APIC) && defined(CONFIG_IRQ_DOMAIN)
 
 struct of_ioapic_type {
 	u32 out_type;
@@ -291,7 +291,7 @@ static int ioapic_xlate(struct irq_domain *domain,
 
 	it = &of_ioapic_type[intspec[1]];
 
-	idx = (u32) domain->host_data;
+	idx = (u32)(unsigned long)domain->host_data;
 	set_io_apic_irq_attr(&attr, idx, line, it->trigger, it->polarity);
 
 	rc = io_apic_setup_irq_pin_once(irq_find_mapping(domain, line),

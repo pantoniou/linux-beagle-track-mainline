@@ -90,6 +90,7 @@ int of_irq_parse_pci(const struct pci_dev *pdev, struct of_phandle_args *out_irq
 }
 EXPORT_SYMBOL_GPL(of_irq_parse_pci);
 
+#if defined(CONFIG_IRQ_DOMAIN)
 /**
  * of_irq_parse_and_map_pci() - Decode a PCI irq from the device tree and map to a virq
  * @dev: The pci device needing an irq
@@ -112,5 +113,11 @@ int of_irq_parse_and_map_pci(const struct pci_dev *dev, u8 slot, u8 pin)
 
 	return irq_create_of_mapping(&oirq);
 }
+#else
+int of_irq_parse_and_map_pci(const struct pci_dev *dev, u8 slot, u8 pin)
+{
+	return 0;
+}
+#endif
 EXPORT_SYMBOL_GPL(of_irq_parse_and_map_pci);
 
