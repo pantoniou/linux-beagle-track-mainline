@@ -2284,6 +2284,15 @@ config TS5500
 
 endif # X86_32
 
+config X86_OF
+	bool "OpenFirmware on x86 support"
+	depends on PCI
+	depends on (X86_32 || 64BIT)
+	select OF
+	select OF_EARLY_FLATTREE
+	---help---
+	  Select to enable OpenFirmware support on x86
+
 config AMD_NB
 	def_bool y
 	depends on CPU_SUP_AMD && PCI
