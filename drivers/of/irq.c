@@ -26,6 +26,7 @@
 #include <linux/string.h>
 #include <linux/slab.h>
 
+#if defined(CONFIG_IRQ_DOMAIN)
 /**
  * irq_of_parse_and_map - Parse and map an interrupt into linux virq space
  * @dev: Device node of the device whose interrupt is to be mapped
@@ -43,6 +44,12 @@ unsigned int irq_of_parse_and_map(struct device_node *dev, int index)
 
 	return irq_create_of_mapping(&oirq);
 }
+#else
+unsigned int irq_of_parse_and_map(struct device_node *dev, int index)
+{
+	return 0;
+}
+#endif
 EXPORT_SYMBOL_GPL(irq_of_parse_and_map);
 
 /**
