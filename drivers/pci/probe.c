@@ -10,6 +10,7 @@
 #include <linux/module.h>
 #include <linux/cpumask.h>
 #include <linux/pci-aspm.h>
+#include <linux/of.h>
 #include <asm-generic/pci-bridge.h>
 #include "pci.h"
 
@@ -701,6 +702,8 @@ static struct pci_bus *pci_alloc_child_bus(struct pci_bus *parent,
 
 	if (!bridge) {
 		child->dev.parent = parent->bridge;
+		pr_info("%s: %s bridge != NULL\n",
+				__func__, dev_name(&child->dev));
 		goto add_dev;
 	}
 
@@ -708,6 +711,10 @@ static struct pci_bus *pci_alloc_child_bus(struct pci_bus *parent,
 	child->bridge = get_device(&bridge->dev);
 	child->dev.parent = child->bridge;
 	pci_set_bus_of_node(child);
+	pr_info("%s: pci_set_bus_of_node(%s) = %s\n",
+			__func__, dev_name(&child->dev),
+			child->dev.of_node ? child->dev.of_node->full_name : "<NULL>");
+
 	pci_set_bus_speed(child);
 
 	/* Set up default resource pointers and names.. */
@@ -1803,6 +1810,7 @@ struct pci_bus *pci_create_root_bus(struct device *parent, int bus,
 
 	if (!parent)
 		set_dev_node(b->bridge, pcibus_to_node(b));
+
 
 	b->dev.class = &pcibus_class;
 	b->dev.parent = b->bridge;

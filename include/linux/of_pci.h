@@ -56,4 +56,18 @@ static inline struct msi_chip *
 of_pci_find_msi_chip_by_node(struct device_node *of_node) { return NULL; }
 #endif
 
+#if defined(CONFIG_OF_PCI) && defined(CONFIG_OF_DYNAMIC)
+void of_pci_add_bus(struct pci_bus *bus);
+void of_pci_remove_bus(struct pci_bus *bus);
+void of_pci_add_device(struct pci_dev *dev);
+void of_pci_release_device(struct pci_dev *dev);
+int of_pci_root_bridge_prepare(struct pci_host_bridge *bridge);
+#else
+static inline void of_pci_add_bus(struct pci_bus *bus) { }
+static inline void of_pci_remove_bus(struct pci_bus *bus) { }
+static inline void of_pci_add_device(struct pci_dev *dev) { }
+static inline void of_pci_release_device(struct pci_dev *dev) { }
+static inline int of_pci_root_bridge_prepare(struct pci_host_bridge *bridge) { return 0; }
+#endif
+
 #endif

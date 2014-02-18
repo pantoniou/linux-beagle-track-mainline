@@ -19,6 +19,9 @@
 #include <asm/smp.h>
 #include <asm/pci_x86.h>
 #include <asm/setup.h>
+#include <linux/of.h>
+#include <linux/of_pci.h>
+#include <linux/pci-acpi.h>
 
 unsigned int pci_probe = PCI_PROBE_BIOS | PCI_PROBE_CONF1 | PCI_PROBE_CONF2 |
 				PCI_PROBE_MMCONF;
@@ -171,14 +174,30 @@ void pcibios_fixup_bus(struct pci_bus *b)
 		pcibios_fixup_device_resources(dev);
 }
 
+int pcibios_root_bridge_prepare(struct pci_host_bridge *bridge)
+{
+	int rc;
+
+	rc = acpi_pci_root_bridge_prepare(bridge);
+	if (rc)
+		return rc;
+	rc = of_pci_root_bridge_prepare(bridge);
+	if (rc)
+		return rc;
+
+	return 0;
+}
+
 void pcibios_add_bus(struct pci_bus *bus)
 {
 	acpi_pci_add_bus(bus);
+	of_pci_add_bus(bus);
 }
 
 void pcibios_remove_bus(struct pci_bus *bus)
 {
 	acpi_pci_remove_bus(bus);
+	of_pci_remove_bus(bus);
 }
 
 /*
@@ -652,7 +671,13 @@ int pcibios_add_device(struct pci_dev *dev)
 		pa_data = data->next;
 		iounmap(data);
 	}
+	of_pci_add_device(dev);
 	return 0;
+}
+
+void pcibios_release_device(struct pci_dev *dev)
+{
+	of_pci_release_device(dev);
 }
 
 int pcibios_enable_device(struct pci_dev *dev, int mask)

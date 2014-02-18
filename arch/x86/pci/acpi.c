@@ -566,7 +566,7 @@ struct pci_bus *pci_acpi_scan_root(struct acpi_pci_root *root)
 	return bus;
 }
 
-int pcibios_root_bridge_prepare(struct pci_host_bridge *bridge)
+int acpi_pci_root_bridge_prepare(struct pci_host_bridge *bridge)
 {
 	struct pci_sysdata *sd = bridge->bus->sysdata;
 
