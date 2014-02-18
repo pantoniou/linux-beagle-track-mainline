@@ -79,9 +79,15 @@ struct device_node *pcibios_get_phb_of_node(struct pci_bus *bus)
 		if (!prop)
 			continue;
 		bus_min = be32_to_cpup(prop);
-		if (bus->number == bus_min)
+		if (bus->number == bus_min) {
+			pr_info("%s: %s found phb_of_node '%s'\n",
+					dev_name(&bus->dev), __func__,
+					np->full_name);
 			return np;
+		}
 	}
+	pr_info("%s: %s could not find phb_of_node\n",
+			dev_name(&bus->dev), __func__);
 	return NULL;
 }
 

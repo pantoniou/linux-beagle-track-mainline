@@ -44,6 +44,7 @@ static inline acpi_handle acpi_pci_get_bridge_handle(struct pci_bus *pbus)
 
 void acpi_pci_add_bus(struct pci_bus *bus);
 void acpi_pci_remove_bus(struct pci_bus *bus);
+int acpi_pci_root_bridge_prepare(struct pci_host_bridge *bridge);
 
 #ifdef	CONFIG_ACPI_PCI_SLOT
 void acpi_pci_slot_init(void);
@@ -70,6 +71,7 @@ static inline void acpiphp_check_host_bridge(struct acpi_device *adev) { }
 #else	/* CONFIG_ACPI */
 static inline void acpi_pci_add_bus(struct pci_bus *bus) { }
 static inline void acpi_pci_remove_bus(struct pci_bus *bus) { }
+static inline int acpi_pci_root_bridge_prepare(struct pci_host_bridge *bridge) { return 0; }
 #endif	/* CONFIG_ACPI */
 
 #ifdef CONFIG_ACPI_APEI
