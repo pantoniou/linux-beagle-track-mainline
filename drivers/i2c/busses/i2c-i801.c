@@ -1158,6 +1158,12 @@ static int i801_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	}
 	priv->features &= ~disable_features;
 
+	/* QEMU doesn't support I2C block & interrupt */
+	if (dmi_name_in_vendors("QEMU")) {
+		dev_notice(&dev->dev, "QEMU detected - removing I2C block & IRQ features\n");
+		priv->features &= ~(FEATURE_I2C_BLOCK_READ | FEATURE_IRQ);
+	}
+
 	err = pci_enable_device(dev);
 	if (err) {
 		dev_err(&dev->dev, "Failed to enable SMBus PCI device (%d)\n",
