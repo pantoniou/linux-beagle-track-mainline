@@ -1,0 +1,46 @@
+/*
+ * Skeleton device tree for QEMU's Q35 machine;
+ * It doesn't do much for now...
+ */
+/dts-v1/;
+
+/ {
+	model = "x86,pc";
+	compatible = "x86,pc";
+
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu@0 {
+			device_type = "cpu";
+			reg = <0>;
+		};
+	};
+
+	/* PCI host bridge */
+	pci-0000-00-00.0 {
+		compatible = "x86,pci";
+		status = "okay";
+		device_type = "pci";
+
+		#address-cells = <3>;
+		#size-cells = <2>;
+
+		bus-range = <0x00 0xff>;
+
+		/* generate device tree dynamically */
+		autocomplete;
+	};
+
+	chosen { };
+	aliases { };
+	memory {
+		device_type = "memory";
+		reg = <0x0 0x10000000>;	/* 256MB */
+	};
+
+};
