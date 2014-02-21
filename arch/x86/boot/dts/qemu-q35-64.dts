@@ -22,8 +22,8 @@
 	};
 
 	/* PCI host bridge */
-	pci-0000-00-00.0 {
-		compatible = "x86,pci";
+	pci-0000-00 {
+		compatible = "x86,pci-host-bridge";
 		status = "okay";
 		device_type = "pci";
 
@@ -44,3 +44,5 @@
 	};
 
 };
+
+#include "testcases.dtsi"
