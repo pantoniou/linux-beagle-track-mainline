@@ -1690,6 +1690,15 @@ static int __init detect_init_APIC(void)
 	mp_lapic_addr = APIC_DEFAULT_PHYS_BASE;
 	return 0;
 }
+
+int __init apic_force_enable(unsigned long addr)
+{
+	if (disable_apic)
+		return -1;
+
+	return 0;
+}
+
 #else
 
 static int __init apic_verify(void)
