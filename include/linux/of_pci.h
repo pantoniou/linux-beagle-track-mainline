@@ -61,12 +61,16 @@ void of_pci_add_bus(struct pci_bus *bus);
 void of_pci_remove_bus(struct pci_bus *bus);
 void of_pci_add_device(struct pci_dev *dev);
 void of_pci_release_device(struct pci_dev *dev);
+void of_pci_bind_driver(struct pci_dev *dev, struct pci_driver *drv);
+void of_pci_unbind_driver(struct pci_dev *dev);
 int of_pci_root_bridge_prepare(struct pci_host_bridge *bridge);
 #else
 static inline void of_pci_add_bus(struct pci_bus *bus) { }
 static inline void of_pci_remove_bus(struct pci_bus *bus) { }
 static inline void of_pci_add_device(struct pci_dev *dev) { }
 static inline void of_pci_release_device(struct pci_dev *dev) { }
+static inline void of_pci_bind_driver(struct pci_dev *dev, struct pci_driver *drv) { }
+static inline void of_pci_unbind_driver(struct pci_dev *dev) { }
 static inline int of_pci_root_bridge_prepare(struct pci_host_bridge *bridge) { return 0; }
 #endif
 
