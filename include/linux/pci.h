@@ -1579,6 +1579,8 @@ int pcibios_set_pcie_reset_state(struct pci_dev *dev,
 				 enum pcie_reset_state state);
 int pcibios_add_device(struct pci_dev *dev);
 void pcibios_release_device(struct pci_dev *dev);
+int pcibios_bind_driver (struct pci_dev *dev, struct pci_driver *drv);
+int pcibios_unbind_driver (struct pci_dev *dev);
 
 #ifdef CONFIG_HIBERNATE_CALLBACKS
 extern struct dev_pm_ops pcibios_pm_ops;

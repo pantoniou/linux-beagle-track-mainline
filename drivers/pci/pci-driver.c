@@ -364,6 +364,9 @@ static int pci_device_probe(struct device * dev)
 	if (error)
 		pci_dev_put(pci_dev);
 
+	if (error == 0)
+		pcibios_bind_driver(pci_dev, drv);
+
 	return error;
 }
 
@@ -378,6 +381,8 @@ static int pci_device_remove(struct device * dev)
 			drv->remove(pci_dev);
 			pm_runtime_put_noidle(dev);
 		}
+		pcibios_unbind_driver(pci_dev);
+
 		pci_dev->driver = NULL;
 	}
 

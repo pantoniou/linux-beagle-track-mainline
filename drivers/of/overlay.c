@@ -8,7 +8,7 @@
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
  */
-#undef DEBUG
+#define DEBUG
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -61,11 +61,16 @@ static int handler_create(struct of_overlay_device_entry *entry, int revert)
 
 	mutex_lock(&of_handler_mutex);
 	list_for_each_entry(handler, &of_handler_list, list) {
+		pr_debug("OF: %s trying '%s'\n", entry->np->full_name, handler->name);
 		ret = (*handler->ops->create)(entry, revert);
 		/* ENOTSUPP means try next */
 		if (ret == -ENOTSUPP)
 			continue;
 		/* anything else means something happened */
+		if (ret == 0)
+			pr_info("OF: %s created on '%s'\n", entry->np->full_name, handler->name);
+		else
+			pr_info("OF: %s failed on '%s'\n", entry->np->full_name, handler->name);
 		break;
 	}
 	mutex_unlock(&of_handler_mutex);

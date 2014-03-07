@@ -148,7 +148,8 @@ void of_pci_add_device(struct pci_dev *pdev)
 				dev_name(dev), __func__);
 		return;
 	}
-	dn = __of_create_empty_node(name, "pci", full_name, 0, GFP_KERNEL);
+	dn = __of_create_empty_node(name, "pci", full_name, 0, GFP_KERNEL,
+			OF_NODE_ALLOCALL);
 	kfree(full_name);
 	if (dn == NULL) {
 		pr_err("%s: %s failed to create node\n",
@@ -164,13 +165,14 @@ void of_pci_add_device(struct pci_dev *pdev)
 		return;
 	}
 
-	snprintf(buf, sizeof(buf) - 1, "pciclass,%04x", (pdev->class >> 8) & 0xffffff);
+	snprintf(buf, sizeof(buf) - 1, "pciclass,%04x",
+			(pdev->class >> 8) & 0xffffff);
 	buf[sizeof(buf) - 1] = '\0';
 	memset(&propbuf, 0, sizeof(propbuf));
 	propbuf.name = "compatible";
 	propbuf.length = strlen(buf) + 1;
 	propbuf.value = buf;
-	prop = __of_copy_property(&propbuf, GFP_KERNEL);
+	prop = __of_copy_property(&propbuf, GFP_KERNEL, OF_PROP_ALLOCALL);
 	BUG_ON(prop == NULL);
 	rc = of_add_property(dn, prop);
 	BUG_ON(rc != 0);
@@ -180,7 +182,7 @@ void of_pci_add_device(struct pci_dev *pdev)
 	propbuf.name = "vendor-id";
 	propbuf.length = sizeof(tmp32);
 	propbuf.value = &tmp32;
-	prop = __of_copy_property(&propbuf, GFP_KERNEL);
+	prop = __of_copy_property(&propbuf, GFP_KERNEL, OF_PROP_ALLOCALL);
 	BUG_ON(prop == NULL);
 	rc = of_add_property(dn, prop);
 	BUG_ON(rc != 0);
@@ -190,7 +192,7 @@ void of_pci_add_device(struct pci_dev *pdev)
 	propbuf.name = "device-id";
 	propbuf.length = sizeof(tmp32);
 	propbuf.value = &tmp32;
-	prop = __of_copy_property(&propbuf, GFP_KERNEL);
+	prop = __of_copy_property(&propbuf, GFP_KERNEL, OF_PROP_ALLOCALL);
 	BUG_ON(prop == NULL);
 	rc = of_add_property(dn, prop);
 	BUG_ON(rc != 0);
@@ -199,7 +201,34 @@ void of_pci_add_device(struct pci_dev *pdev)
 	propbuf.name = "device_type";
 	propbuf.length = strlen("pci") + 1;
 	propbuf.value = "pci";
-	prop = __of_copy_property(&propbuf, GFP_KERNEL);
+	prop = __of_copy_property(&propbuf, GFP_KERNEL, OF_PROP_ALLOCALL);
+	BUG_ON(prop == NULL);
+	rc = of_add_property(dn, prop);
+	BUG_ON(rc != 0);
+
+	memset(&propbuf, 0, sizeof(propbuf));
+	propbuf.name = "dev_name";
+	propbuf.length = strlen(dev_name(dev)) + 1;
+	propbuf.value = (void *)dev_name(dev);
+	prop = __of_copy_property(&propbuf, GFP_KERNEL, OF_PROP_ALLOCALL);
+	BUG_ON(prop == NULL);
+	rc = of_add_property(dn, prop);
+	BUG_ON(rc != 0);
+
+	memset(&propbuf, 0, sizeof(propbuf));
+	propbuf.name = "status";
+	propbuf.length = strlen("disabled") + 1;
+	propbuf.value = "disabled";
+	prop = __of_copy_property(&propbuf, GFP_KERNEL, OF_PROP_ALLOCALL);
+	BUG_ON(prop == NULL);
+	rc = of_add_property(dn, prop);
+	BUG_ON(rc != 0);
+
+	memset(&propbuf, 0, sizeof(propbuf));
+	propbuf.name = "auto-generated";
+	propbuf.length = 0;
+	propbuf.value = NULL;
+	prop = __of_copy_property(&propbuf, GFP_KERNEL, OF_PROP_ALLOCALL);
 	BUG_ON(prop == NULL);
 	rc = of_add_property(dn, prop);
 	BUG_ON(rc != 0);
@@ -213,6 +242,80 @@ void of_pci_release_device(struct pci_dev *pdev)
 	struct device *dev = &pdev->dev;
 
 	pr_info("%s: %s\n", __func__, dev_name(dev));
+}
+
+void of_pci_bind_driver(struct pci_dev *pdev, struct pci_driver *drv)
+{
+	struct device *dev = &pdev->dev;
+	struct device_node *dn = dev->of_node;
+#ifdef CONFIG_OF_DYNAMIC
+	int rc;
+	struct property propbuf, *prop;
+#endif
+
+	pr_info("%s: %s - %s\n", __func__, dev_name(dev),
+			dn ? dn->full_name : "<NULL>");
+
+#ifdef CONFIG_OF_DYNAMIC
+	/* only on non NULL auto-generated device node */
+	if (dn == NULL || !of_property_read_bool(dn, "auto-generated"))
+		return;
+
+	if (drv != NULL && drv->name != NULL) {
+		memset(&propbuf, 0, sizeof(propbuf));
+		propbuf.name = "pci_drv";
+		propbuf.length = strlen(drv->name) + 1;
+		propbuf.value = (void *)drv->name;
+		prop = __of_copy_property(&propbuf, GFP_KERNEL,
+				OF_PROP_ALLOCALL);
+		BUG_ON(prop == NULL);
+		rc = of_update_property(dn, prop);
+		BUG_ON(rc != 0);
+	}
+
+	memset(&propbuf, 0, sizeof(propbuf));
+	propbuf.name = "status";
+	propbuf.length = strlen("okay") + 1;
+	propbuf.value = "okay";
+	prop = __of_copy_property(&propbuf, GFP_KERNEL, OF_PROP_ALLOCALL);
+	BUG_ON(prop == NULL);
+	rc = of_update_property(dn, prop);
+	BUG_ON(rc != 0);
+#endif
+}
+
+void of_pci_unbind_driver(struct pci_dev *pdev)
+{
+	struct device *dev = &pdev->dev;
+	struct device_node *dn = dev->of_node;
+#ifdef CONFIG_OF_DYNAMIC
+	int rc;
+	struct property propbuf, *prop;
+#endif
+
+	pr_info("%s: %s - %s\n", __func__, dev_name(dev),
+			dn ? dn->full_name : "<NULL>");
+
+#ifdef CONFIG_OF_DYNAMIC
+	/* only on non NULL auto-generated device node */
+	if (dn == NULL || !of_property_read_bool(dn, "auto-generated"))
+		return;
+
+	memset(&propbuf, 0, sizeof(propbuf));
+	propbuf.name = "status";
+	propbuf.length = strlen("disabled") + 1;
+	propbuf.value = "disabled";
+	prop = __of_copy_property(&propbuf, GFP_KERNEL, OF_PROP_ALLOCALL);
+	BUG_ON(prop == NULL);
+	rc = of_update_property(dn, prop);
+	BUG_ON(rc != 0);
+
+	prop = of_find_property(dn, "pci_drv", NULL);
+	if (prop != NULL) {
+		rc = of_remove_property(dn, prop);
+		BUG_ON(rc != 0);
+	};
+#endif
 }
 
 #endif

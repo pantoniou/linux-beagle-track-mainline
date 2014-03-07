@@ -1448,6 +1448,16 @@ int __weak pcibios_add_device (struct pci_dev *dev)
 	return 0;
 }
 
+int __weak pcibios_bind_driver (struct pci_dev *dev, struct pci_driver *drv)
+{
+	return 0;
+}
+
+int __weak pcibios_unbind_driver (struct pci_dev *dev)
+{
+	return 0;
+}
+
 /**
  * pcibios_release_device - provide arch specific hooks when releasing device dev
  * @dev: the PCI device being released
