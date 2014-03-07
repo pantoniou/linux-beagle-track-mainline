@@ -680,6 +680,18 @@ void pcibios_release_device(struct pci_dev *dev)
 	of_pci_release_device(dev);
 }
 
+int pcibios_bind_driver(struct pci_dev *dev, struct pci_driver *drv)
+{
+	of_pci_bind_driver(dev, drv);
+	return 0;
+}
+
+int pcibios_unbind_driver(struct pci_dev *dev)
+{
+	of_pci_unbind_driver(dev);
+	return 0;
+}
+
 int pcibios_enable_device(struct pci_dev *dev, int mask)
 {
 	int err;

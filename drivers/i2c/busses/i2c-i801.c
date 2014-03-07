@@ -1229,6 +1229,8 @@ static int i801_probe(struct pci_dev *dev, const struct pci_device_id *id)
 
 	/* set up the sysfs linkage to our parent device */
 	priv->adapter.dev.parent = &dev->dev;
+	/* and the OF linkage */
+	priv->adapter.dev.of_node = dev->dev.of_node;
 
 	/* Retry up to 3 times on lost arbitration */
 	priv->adapter.retries = 3;
