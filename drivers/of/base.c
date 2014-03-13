@@ -1185,6 +1185,64 @@ static void *of_find_property_value_of_size(const struct device_node *np,
 }
 
 /**
+ * __of_find_node_by_full_name - Find a node with the full name recursively
+ * @node:	Root of the tree to perform the search
+ * @full_name:	Full name of the node to find.
+ *
+ * Find a node with the give full name by recursively following any of
+ * the child node links.
+ * Returns the matching node, or NULL if not found.
+ * Note that the devtree lock is not taken, so this function is only
+ * safe to call on either detached trees, or when devtree lock is already
+ * taken.
+ */
+struct device_node *__of_find_node_by_full_name(struct device_node *node,
+		const char *full_name)
+{
+	struct device_node *child, *found;
+
+	if (node == NULL)
+		return NULL;
+
+	/* check */
+	if (of_node_cmp(node->full_name, full_name) == 0)
+		return node;
+
+	__for_each_child_of_node(node, child) {
+		found = __of_find_node_by_full_name(child, full_name);
+		if (found != NULL)
+			return found;
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL(__of_find_node_by_full_name);
+
+/**
+ * of_find_node_by_full_name - Find a node with the full name recursively
+ * @node:	Root of the tree to perform the search
+ * @full_name:	Full name of the node to find.
+ *
+ * Find a node with the give full name by recursively following any of
+ * the child node links.
+ * Returns the matching node (with a ref taken), or NULL if not found.
+ */
+struct device_node *of_find_node_by_full_name(struct device_node *node,
+		const char *full_name)
+{
+	unsigned long flags;
+	struct device_node *np;
+
+	raw_spin_lock_irqsave(&devtree_lock, flags);
+	np = of_find_node_by_full_name(node, full_name);
+	of_node_get(np);
+	raw_spin_unlock_irqrestore(&devtree_lock, flags);
+
+	return np;
+}
+EXPORT_SYMBOL(of_find_node_by_full_name);
+
+/**
  * of_property_read_u32_index - Find and read a u32 from a multi-value property.
  *
  * @np:		device node from which the property value is to be read.
