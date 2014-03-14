@@ -137,6 +137,7 @@ static void __init of_selftest_dynamic(void)
 	if (prop->value)
 		selftest(of_add_property(np, prop) == 0,
 			 "Adding a large property should have passed\n");
+
 }
 
 static void __init of_selftest_parse_phandle_with_args(void)
