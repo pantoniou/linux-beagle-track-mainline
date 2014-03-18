@@ -1821,7 +1821,7 @@ int of_add_property(struct device_node *np, struct property *prop)
 	if (rc)
 		return rc;
 
-	if (of_node_is_attached(np));
+	if (of_node_is_attached(np))
 		__of_add_property_sysfs(np, prop);
 
 	return rc;
