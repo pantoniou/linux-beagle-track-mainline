@@ -2,3 +2,4 @@
 #include "tests-interrupts.dtsi"
 #include "tests-match.dtsi"
 #include "tests-platform.dtsi"
+#include "tests-overlay.dtsi"
