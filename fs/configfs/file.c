@@ -48,6 +48,10 @@ struct configfs_buffer {
 	struct configfs_item_operations	* ops;
 	struct mutex		mutex;
 	int			needs_read_fill;
+	int			read_in_progress;
+	int			write_in_progress;
+	char			*bin_buffer;
+	int			bin_buffer_size;
 };
 
 
@@ -107,7 +111,14 @@ static ssize_t
 configfs_read_file(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
 	struct configfs_buffer * buffer = file->private_data;
+	struct configfs_dirent * sd = file->f_path.dentry->d_fsdata;
 	ssize_t retval = 0;
+
+	if (WARN_ON(sd == NULL))
+		return -EINVAL;
+
+	if (WARN_ON(!(sd->s_type & CONFIGFS_ITEM_ATTR)))
+		return -EINVAL;
 
 	mutex_lock(&buffer->mutex);
 	if (buffer->needs_read_fill) {
@@ -118,6 +129,85 @@ configfs_read_file(struct file *file, char __user *buf, size_t count, loff_t *pp
 		 __func__, count, *ppos, buffer->page);
 	retval = simple_read_from_buffer(buf, count, ppos, buffer->page,
 					 buffer->count);
+out:
+	mutex_unlock(&buffer->mutex);
+	return retval;
+}
+
+/**
+ *	configfs_read_bin_file - read a binary attribute.
+ *	@file:	file pointer.
+ *	@buf:	buffer to fill.
+ *	@count:	number of bytes to read.
+ *	@ppos:	starting offset in file.
+ *
+ */
+
+static ssize_t
+configfs_read_bin_file(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+{
+	struct configfs_buffer * buffer = file->private_data;
+	struct dentry *dentry = file->f_path.dentry;
+	struct configfs_dirent * sd = dentry->d_fsdata;
+	struct config_item * item = to_item(dentry->d_parent);
+	struct configfs_item_operations * ops = buffer->ops;
+	struct configfs_attribute * attr = to_attr(dentry);
+	struct configfs_bin_attribute *bin_attr =
+		container_of(attr, struct configfs_bin_attribute, attr);
+	ssize_t retval = 0;
+	ssize_t len = min_t(size_t, count, PAGE_SIZE);
+
+	if (WARN_ON(sd == NULL))
+		return -EINVAL;
+
+	if (WARN_ON(!(sd->s_type & CONFIGFS_ITEM_BIN_ATTR)))
+		return -EINVAL;
+
+	mutex_lock(&buffer->mutex);
+
+	/* we don't support switching read/write modes */
+	if (buffer->write_in_progress) {
+		retval = -EINVAL;
+		goto out;
+	}
+	if (!buffer->read_in_progress)
+		buffer->read_in_progress = 1;
+
+	pr_debug("%s: count = %zd, ppos = %lld, buf = %p\n",
+		__func__, count, *ppos, buffer->page);
+
+	if (buffer->needs_read_fill) {
+
+		/* perform first read with buf == NULL to get extend */
+		len = ops->read_bin_attribute(item, bin_attr, NULL, 0);
+		if (len < 0) {
+			retval = len;
+			goto out;
+		}
+
+		buffer->bin_buffer = kmalloc(len, GFP_KERNEL);
+		if (buffer->bin_buffer == NULL) {
+			retval = -ENOMEM;
+			goto out;
+		}
+		buffer->bin_buffer_size = len;
+
+		/* perform second read to fill buffer */
+		len = ops->read_bin_attribute(item, bin_attr,
+				buffer->bin_buffer, len);
+		if (len < 0) {
+			retval = len;
+			kfree(buffer->bin_buffer);
+			buffer->bin_buffer_size = 0;
+			buffer->bin_buffer = NULL;
+			goto out;
+		}
+
+		buffer->needs_read_fill = 0;
+	}
+
+	retval = simple_read_from_buffer(buf, count, ppos, buffer->bin_buffer,
+					buffer->bin_buffer_size);
 out:
 	mutex_unlock(&buffer->mutex);
 	return retval;
@@ -198,7 +288,14 @@ static ssize_t
 configfs_write_file(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 {
 	struct configfs_buffer * buffer = file->private_data;
+	struct configfs_dirent * sd = file->f_path.dentry->d_fsdata;
 	ssize_t len;
+
+	if (WARN_ON(sd == NULL))
+		return -EINVAL;
+
+	if (WARN_ON(!(sd->s_type & CONFIGFS_ITEM_ATTR)))
+		return -EINVAL;
 
 	mutex_lock(&buffer->mutex);
 	len = fill_write_buffer(buffer, buf, count);
@@ -210,10 +307,75 @@ configfs_write_file(struct file *file, const char __user *buf, size_t count, lof
 	return len;
 }
 
-static int check_perm(struct inode * inode, struct file * file)
+/**
+ *	configfs_write_bin_file - write a binary attribute.
+ *	@file:	file pointer
+ *	@buf:	data to write
+ *	@count:	number of bytes
+ *	@ppos:	starting offset
+ */
+
+static ssize_t
+configfs_write_bin_file(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 {
-	struct config_item *item = configfs_get_config_item(file->f_path.dentry->d_parent);
-	struct configfs_attribute * attr = to_attr(file->f_path.dentry);
+	struct configfs_buffer * buffer = file->private_data;
+	struct dentry *dentry = file->f_path.dentry;
+	struct configfs_dirent * sd = dentry->d_fsdata;
+	void *tbuf = NULL;
+	ssize_t len;
+
+	if (WARN_ON(sd == NULL))
+		return -EINVAL;
+
+	if (WARN_ON(!(sd->s_type & CONFIGFS_ITEM_BIN_ATTR)))
+		return -EINVAL;
+
+	mutex_lock(&buffer->mutex);
+
+	/* we don't support switching read/write modes */
+	if (buffer->read_in_progress) {
+		len = -EINVAL;
+		goto out;
+	}
+	if (!buffer->write_in_progress)
+		buffer->write_in_progress = 1;
+
+	/* buffer grows? */
+	if (*ppos + count > buffer->bin_buffer_size) {
+
+		tbuf = kmalloc(*ppos + count, GFP_KERNEL);
+		if (tbuf == NULL) {
+			len = -ENOMEM;
+			goto out;
+		}
+
+		/* copy old contents */
+		if (buffer->bin_buffer) {
+			memcpy(tbuf, buffer->bin_buffer,
+					buffer->bin_buffer_size);
+			kfree(buffer->bin_buffer);
+		}
+
+		/* clear the new area */
+		memset(tbuf + buffer->bin_buffer_size, 0,
+				*ppos + count - buffer->bin_buffer_size);
+		buffer->bin_buffer = tbuf;
+		buffer->bin_buffer_size = *ppos + count;
+	}
+
+	len = simple_write_to_buffer(buffer->bin_buffer, buffer->bin_buffer_size,
+			ppos, buf, count);
+	if (len > 0)
+		*ppos += len;
+out:
+	mutex_unlock(&buffer->mutex);
+	return len;
+}
+
+static int check_perm(struct inode * inode, struct file * file,
+		struct config_item * item, struct configfs_attribute * attr,
+		int type)
+{
 	struct configfs_buffer * buffer;
 	struct configfs_item_operations * ops = NULL;
 	int error = 0;
@@ -238,9 +400,14 @@ static int check_perm(struct inode * inode, struct file * file)
 	 */
 	if (file->f_mode & FMODE_WRITE) {
 
-		if (!(inode->i_mode & S_IWUGO) || !ops->store_attribute)
+		if (!(inode->i_mode & S_IWUGO))
 			goto Eaccess;
 
+		if ((type & CONFIGFS_ITEM_ATTR) && !ops->store_attribute)
+			goto Eaccess;
+
+		if ((type & CONFIGFS_ITEM_BIN_ATTR) && !ops->write_bin_attribute)
+			goto Eaccess;
 	}
 
 	/* File needs read support.
@@ -248,7 +415,13 @@ static int check_perm(struct inode * inode, struct file * file)
 	 * must be a show method for it.
 	 */
 	if (file->f_mode & FMODE_READ) {
-		if (!(inode->i_mode & S_IRUGO) || !ops->show_attribute)
+		if (!(inode->i_mode & S_IRUGO))
+			goto Eaccess;
+
+		if ((type & CONFIGFS_ITEM_ATTR) && !ops->show_attribute)
+			goto Eaccess;
+
+		if ((type & CONFIGFS_ITEM_BIN_ATTR) && !ops->read_bin_attribute)
 			goto Eaccess;
 	}
 
@@ -262,6 +435,8 @@ static int check_perm(struct inode * inode, struct file * file)
 	}
 	mutex_init(&buffer->mutex);
 	buffer->needs_read_fill = 1;
+	buffer->read_in_progress = 0;
+	buffer->write_in_progress = 0;
 	buffer->ops = ops;
 	file->private_data = buffer;
 	goto Done;
@@ -279,15 +454,10 @@ static int check_perm(struct inode * inode, struct file * file)
 	return error;
 }
 
-static int configfs_open_file(struct inode * inode, struct file * filp)
+static int do_release(struct inode * inode, struct file * filp,
+		struct config_item *item, struct configfs_attribute *attr,
+		int type)
 {
-	return check_perm(inode,filp);
-}
-
-static int configfs_release(struct inode * inode, struct file * filp)
-{
-	struct config_item * item = to_item(filp->f_path.dentry->d_parent);
-	struct configfs_attribute * attr = to_attr(filp->f_path.dentry);
 	struct module * owner = attr->ca_owner;
 	struct configfs_buffer * buffer = filp->private_data;
 
@@ -305,14 +475,84 @@ static int configfs_release(struct inode * inode, struct file * filp)
 	return 0;
 }
 
+static int configfs_open_file(struct inode * inode, struct file * filp)
+{
+	return check_perm(inode, filp,
+			configfs_get_config_item(filp->f_path.dentry->d_parent),
+			to_attr(filp->f_path.dentry), CONFIGFS_ITEM_ATTR);
+}
+
+static int configfs_release_file(struct inode * inode, struct file * filp)
+{
+	return do_release(inode, filp,
+			to_item(filp->f_path.dentry->d_parent),
+			to_attr(filp->f_path.dentry), CONFIGFS_ITEM_ATTR);
+}
+
+static int configfs_open_bin_file(struct inode * inode, struct file * filp)
+{
+	return check_perm(inode, filp,
+			configfs_get_config_item(filp->f_path.dentry->d_parent),
+			to_attr(filp->f_path.dentry), CONFIGFS_ITEM_BIN_ATTR);
+}
+
+static int configfs_release_bin_file(struct inode * inode, struct file * filp)
+{
+	struct configfs_buffer * buffer = filp->private_data;
+	struct dentry *dentry = filp->f_path.dentry;
+	struct config_item * item = to_item(dentry->d_parent);
+	struct configfs_item_operations * ops = buffer->ops;
+	struct configfs_attribute * attr = to_attr(dentry);
+	struct configfs_bin_attribute *bin_attr =
+		container_of(attr, struct configfs_bin_attribute, attr);
+	ssize_t len = 0;
+	int ret;
+
+	if (buffer->read_in_progress)
+		buffer->read_in_progress = 0;
+
+	if (buffer->write_in_progress) {
+		buffer->write_in_progress = 0;
+
+		pr_debug("%s:\n", __func__);
+
+		len = ops->write_bin_attribute(item, bin_attr, buffer->bin_buffer,
+				buffer->bin_buffer_size);
+		if (len < 0)
+			goto out;
+
+		if (buffer->bin_buffer) {
+			kfree(buffer->bin_buffer);
+			buffer->bin_buffer = NULL;
+			buffer->bin_buffer_size = 0;
+		}
+		buffer->needs_read_fill = 1;;
+	}
+out:
+	ret = do_release(inode, filp,
+			to_item(filp->f_path.dentry->d_parent),
+			to_attr(filp->f_path.dentry), CONFIGFS_ITEM_BIN_ATTR);
+	if (len < 0)
+		return len;
+	return ret;
+}
+
+
 const struct file_operations configfs_file_operations = {
 	.read		= configfs_read_file,
 	.write		= configfs_write_file,
 	.llseek		= generic_file_llseek,
 	.open		= configfs_open_file,
-	.release	= configfs_release,
+	.release	= configfs_release_file,
 };
 
+const struct file_operations configfs_bin_file_operations = {
+	.read		= configfs_read_bin_file,
+	.write		= configfs_write_bin_file,
+	.llseek		= NULL,		/* bin file is not seekable */
+	.open		= configfs_open_bin_file,
+	.release	= configfs_release_bin_file,
+};
 
 int configfs_add_file(struct dentry * dir, const struct configfs_attribute * attr, int type)
 {
@@ -340,5 +580,20 @@ int configfs_create_file(struct config_item * item, const struct configfs_attrib
 
 	return configfs_add_file(item->ci_dentry, attr,
 				 CONFIGFS_ITEM_ATTR);
+}
+
+/**
+ *	configfs_create_bin_file - create a binary attribute file for an item.
+ *	@item:	item we're creating for.
+ *	@attr:	atrribute descriptor.
+ */
+
+int configfs_create_bin_file(struct config_item * item,
+		const struct configfs_bin_attribute * bin_attr)
+{
+	BUG_ON(!item || !item->ci_dentry || !bin_attr);
+
+	return configfs_add_file(item->ci_dentry, &bin_attr->attr,
+				 CONFIGFS_ITEM_BIN_ATTR);
 }
 
