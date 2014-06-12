@@ -8,7 +8,7 @@
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
  */
-#undef DEBUG
+#define DEBUG
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -443,7 +443,7 @@ static void of_overlay_revert_one(struct of_overlay_info *ovinfo)
 					"REMOVE" : "UPDATE",
 					np->full_name, le->prop->name);
 
-			/* property is possibly on deadprops (avoid alloc) */
+			/* property is *always* on deadprops */
 			raw_spin_lock_irqsave(&devtree_lock, flags);
 			prop = le->action == OF_RECONFIG_REMOVE_PROPERTY ?
 				le->prop : le->old_prop;
@@ -453,23 +453,15 @@ static void of_overlay_revert_one(struct of_overlay_info *ovinfo)
 					break;
 				propp = &(*propp)->next;
 			}
-			if (*propp != NULL) {
-				/* remove it from deadprops */
-				(*propp)->next = prop->next;
-				raw_spin_unlock_irqrestore(&devtree_lock,
-						flags);
-			} else {
-				raw_spin_unlock_irqrestore(&devtree_lock,
-						flags);
-				/* not found, just make a copy */
-				prop = __of_copy_property(prop, GFP_KERNEL,
-						OF_PROP_ALLOCALL);
-				if (prop == NULL) {
-					pr_err("%s: Failed to copy property\n",
-							__func__);
-					break;
-				}
-			}
+
+			/* we should find it in deadprops */
+			WARN_ON(*propp == NULL);
+
+			/* remove it from deadprops */
+			if (*propp != NULL)
+				*propp = prop->next;
+
+			raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
 			if (le->action == OF_RECONFIG_REMOVE_PROPERTY)
 				ret = of_add_property(np, prop);
