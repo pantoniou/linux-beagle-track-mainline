@@ -234,6 +234,8 @@ extern struct device_node *of_get_parent(const struct device_node *node);
 extern struct device_node *of_get_next_parent(struct device_node *node);
 extern struct device_node *of_get_next_child(const struct device_node *node,
 					     struct device_node *prev);
+struct device_node *__of_get_next_child(const struct device_node *node,
+						struct device_node *prev);
 extern struct device_node *of_get_next_available_child(
 	const struct device_node *node, struct device_node *prev);
 
@@ -392,6 +394,12 @@ static inline struct device_node *of_get_parent(const struct device_node *node)
 }
 
 static inline struct device_node *of_get_next_child(
+	const struct device_node *node, struct device_node *prev)
+{
+	return NULL;
+}
+
+static inline struct device_node *__of_get_next_child(
 	const struct device_node *node, struct device_node *prev)
 {
 	return NULL;
@@ -734,6 +742,9 @@ static inline int of_property_read_u32(const struct device_node *np,
 #define for_each_child_of_node(parent, child) \
 	for (child = of_get_next_child(parent, NULL); child != NULL; \
 	     child = of_get_next_child(parent, child))
+#define __for_each_child_of_node(parent, child) \
+	for (child = __of_get_next_child(parent, NULL); child != NULL; \
+	     child = __of_get_next_child(parent, child))
 #define for_each_available_child_of_node(parent, child) \
 	for (child = of_get_next_available_child(parent, NULL); child != NULL; \
 	     child = of_get_next_available_child(parent, child))
