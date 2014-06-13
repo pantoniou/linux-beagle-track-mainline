@@ -1948,6 +1948,9 @@ int of_reconfig_notify(unsigned long action, void *p)
 
 /**
  * of_attach_node - Plug a device node into the tree and global list.
+ *
+ * Put the device node after of_allnodes in the global list so that
+ * of_allnodes remains the root.
  */
 int of_attach_node(struct device_node *np)
 {
@@ -1958,11 +1961,12 @@ int of_attach_node(struct device_node *np)
 	if (rc)
 		return rc;
 
+	BUG_ON(!of_allnodes);
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 	np->sibling = np->parent->child;
-	np->allnext = of_allnodes;
+	np->allnext = of_allnodes->allnext;
 	np->parent->child = np;
-	of_allnodes = np;
+	of_allnodes->allnext = np;
 	of_node_clear_flag(np, OF_DETACHED);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
