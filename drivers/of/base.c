@@ -695,7 +695,7 @@ struct device_node *of_get_next_parent(struct device_node *node)
 }
 EXPORT_SYMBOL(of_get_next_parent);
 
-static struct device_node *__of_get_next_child(const struct device_node *node,
+struct device_node *__of_get_next_child(const struct device_node *node,
 						struct device_node *prev)
 {
 	struct device_node *next;
@@ -710,9 +710,7 @@ static struct device_node *__of_get_next_child(const struct device_node *node,
 	of_node_put(prev);
 	return next;
 }
-#define __for_each_child_of_node(parent, child) \
-	for (child = __of_get_next_child(parent, NULL); child != NULL; \
-	     child = __of_get_next_child(parent, child))
+EXPORT_SYMBOL(__of_get_next_child);
 
 /**
  *	of_get_next_child - Iterate a node childs
