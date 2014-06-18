@@ -510,9 +510,17 @@ int of_platform_populate(struct device_node *root,
 }
 EXPORT_SYMBOL_GPL(of_platform_populate);
 
-static int of_platform_device_destroy(struct device *dev, void *data)
+int of_platform_device_destroy(struct device *dev, void *data)
 {
 	bool *children_left = data;
+
+	/* if the device is not a platform device, do nothing */
+	if (dev->bus != &platform_bus_type
+#ifdef CONFIG_ARM_AMBA
+		&& dev->bus != &amba_bustype
+#endif
+	   )
+		return 0;
 
 	/* Do not touch devices not populated from the device tree */
 	if (!dev->of_node || !of_node_check_flag(dev->of_node, OF_POPULATED)) {
@@ -541,6 +549,7 @@ static int of_platform_device_destroy(struct device *dev, void *data)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(of_platform_device_destroy);
 
 /**
  * of_platform_depopulate() - Remove devices populated from device tree
