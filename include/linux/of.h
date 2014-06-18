@@ -314,6 +314,11 @@ extern int of_alias_get_id(struct device_node *np, const char *stem);
 
 extern int of_machine_is_compatible(const char *compat);
 
+int __of_add_property(struct device_node *np, struct property *prop);
+int __of_remove_property(struct device_node *np, struct property *prop);
+int __of_update_property(struct device_node *np, struct property *newprop,
+		struct property **oldprop);
+
 extern int of_add_property(struct device_node *np, struct property *prop);
 extern int of_remove_property(struct device_node *np, struct property *prop);
 extern int of_update_property(struct device_node *np, struct property *newprop);
@@ -333,6 +338,9 @@ struct of_prop_reconfig {
 extern int of_reconfig_notifier_register(struct notifier_block *);
 extern int of_reconfig_notifier_unregister(struct notifier_block *);
 extern int of_reconfig_notify(unsigned long, void *);
+
+void __of_attach_node(struct device_node *np);
+void __of_detach_node(struct device_node *np);
 
 extern int of_attach_node(struct device_node *);
 extern int of_detach_node(struct device_node *);

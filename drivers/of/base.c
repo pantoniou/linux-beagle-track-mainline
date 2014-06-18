@@ -1828,7 +1828,7 @@ static int of_property_notify(int action, struct device_node *np,
 /**
  * __of_add_property - Add a property to a node without lock operations
  */
-static int __of_add_property(struct device_node *np, struct property *prop)
+int __of_add_property(struct device_node *np, struct property *prop)
 {
 	struct property **next;
 
@@ -1870,6 +1870,25 @@ int of_add_property(struct device_node *np, struct property *prop)
 	return rc;
 }
 
+int __of_remove_property(struct device_node *np, struct property *prop)
+{
+	struct property **next;
+
+	for (next = &np->properties; *next; next = &(*next)->next) {
+		if (*next == prop)
+			break;
+	}
+	if (*next == NULL)
+		return -ENODEV;
+
+	/* found the node */
+	*next = prop->next;
+	prop->next = np->deadprops;
+	np->deadprops = prop;
+
+	return 0;
+}
+
 /**
  * of_remove_property - Remove a property from a node.
  *
@@ -1880,9 +1899,7 @@ int of_add_property(struct device_node *np, struct property *prop)
  */
 int of_remove_property(struct device_node *np, struct property *prop)
 {
-	struct property **next;
 	unsigned long flags;
-	int found = 0;
 	int rc;
 
 	rc = of_property_notify(OF_RECONFIG_REMOVE_PROPERTY, np, prop);
@@ -1890,28 +1907,43 @@ int of_remove_property(struct device_node *np, struct property *prop)
 		return rc;
 
 	raw_spin_lock_irqsave(&devtree_lock, flags);
-	next = &np->properties;
-	while (*next) {
-		if (*next == prop) {
-			/* found the node */
-			*next = prop->next;
-			prop->next = np->deadprops;
-			np->deadprops = prop;
-			found = 1;
-			break;
-		}
-		next = &(*next)->next;
-	}
+	rc = __of_remove_property(np, prop);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
-	if (!found)
-		return -ENODEV;
+	if (rc)
+		return rc;
 
 	/* at early boot, bail hear and defer setup to of_init() */
 	if (!of_kset)
 		return 0;
 
 	sysfs_remove_bin_file(&np->kobj, &prop->attr);
+
+	return 0;
+}
+
+int __of_update_property(struct device_node *np, struct property *newprop,
+		struct property **oldpropp)
+{
+	struct property **next, *oldprop;
+
+	for (next = &np->properties; *next; next = &(*next)->next) {
+		if (of_prop_cmp((*next)->name, newprop->name) == 0)
+			break;
+	}
+	*oldpropp = oldprop = *next;
+
+	if (oldprop) {
+		/* replace the node */
+		newprop->next = oldprop->next;
+		*next = newprop;
+		oldprop->next = np->deadprops;
+		np->deadprops = oldprop;
+	} else {
+		/* new node */
+		newprop->next = NULL;
+		*next = newprop;
+	}
 
 	return 0;
 }
@@ -1925,36 +1957,21 @@ int of_remove_property(struct device_node *np, struct property *prop)
  * Instead we just move the property to the "dead properties" list,
  * and add the new property to the property list
  */
-int of_update_property(struct device_node *np, struct property *newprop)
+int of_update_property(struct device_node *np, struct property *prop)
 {
-	struct property **next, *oldprop;
+	struct property *oldprop;
 	unsigned long flags;
 	int rc;
 
-	rc = of_property_notify(OF_RECONFIG_UPDATE_PROPERTY, np, newprop);
+	if (!prop->name)
+		return -EINVAL;
+
+	rc = of_property_notify(OF_RECONFIG_UPDATE_PROPERTY, np, prop);
 	if (rc)
 		return rc;
 
-	if (!newprop->name)
-		return -EINVAL;
-
 	raw_spin_lock_irqsave(&devtree_lock, flags);
-	next = &np->properties;
-	oldprop = __of_find_property(np, newprop->name, NULL);
-	if (!oldprop) {
-		/* add the new node */
-		rc = __of_add_property(np, newprop);
-	} else while (*next) {
-		/* replace the node */
-		if (*next == oldprop) {
-			newprop->next = oldprop->next;
-			*next = newprop;
-			oldprop->next = np->deadprops;
-			np->deadprops = oldprop;
-			break;
-		}
-		next = &(*next)->next;
-	}
+	rc = __of_update_property(np, prop, &oldprop);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 	if (rc)
 		return rc;
@@ -1966,7 +1983,7 @@ int of_update_property(struct device_node *np, struct property *newprop)
 	/* Update the sysfs attribute */
 	if (oldprop)
 		sysfs_remove_bin_file(&np->kobj, &oldprop->attr);
-	__of_add_property_sysfs(np, newprop);
+	__of_add_property_sysfs(np, prop);
 
 	return 0;
 }
@@ -2002,6 +2019,15 @@ int of_reconfig_notify(unsigned long action, void *p)
 	return notifier_to_errno(rc);
 }
 
+void __of_attach_node(struct device_node *np)
+{
+	np->sibling = np->parent->child;
+	np->allnext = of_allnodes->allnext;
+	np->parent->child = np;
+	of_allnodes->allnext = np;
+	of_node_clear_flag(np, OF_DETACHED);
+}
+
 /**
  * of_attach_node - Plug a device node into the tree and global list.
  *
@@ -2019,51 +2045,29 @@ int of_attach_node(struct device_node *np)
 
 	BUG_ON(!of_allnodes);
 	raw_spin_lock_irqsave(&devtree_lock, flags);
-	np->sibling = np->parent->child;
-	np->allnext = of_allnodes->allnext;
-	np->parent->child = np;
-	of_allnodes->allnext = np;
-	of_node_clear_flag(np, OF_DETACHED);
+	__of_attach_node(np);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
 	of_node_add(np);
 	return 0;
 }
 
-/**
- * of_detach_node - "Unplug" a node from the device tree.
- *
- * The caller must hold a reference to the node.  The memory associated with
- * the node is not freed until its refcount goes to zero.
- */
-int of_detach_node(struct device_node *np)
+void __of_detach_node(struct device_node *np)
 {
 	struct device_node *parent;
-	unsigned long flags;
-	int rc = 0;
+	struct device_node *prev;
+	struct device_node *prevsib;
 
-	rc = of_reconfig_notify(OF_RECONFIG_DETACH_NODE, np);
-	if (rc)
-		return rc;
-
-	raw_spin_lock_irqsave(&devtree_lock, flags);
-
-	if (of_node_check_flag(np, OF_DETACHED)) {
-		/* someone already detached it */
-		raw_spin_unlock_irqrestore(&devtree_lock, flags);
-		return rc;
-	}
+	if (WARN_ON(of_node_check_flag(np, OF_DETACHED)))
+		return;
 
 	parent = np->parent;
-	if (!parent) {
-		raw_spin_unlock_irqrestore(&devtree_lock, flags);
-		return rc;
-	}
+	if (WARN_ON(!parent))
+		return;
 
 	if (of_allnodes == np)
 		of_allnodes = np->allnext;
 	else {
-		struct device_node *prev;
 		for (prev = of_allnodes;
 		     prev->allnext != np;
 		     prev = prev->allnext)
@@ -2074,7 +2078,6 @@ int of_detach_node(struct device_node *np)
 	if (parent->child == np)
 		parent->child = np->sibling;
 	else {
-		struct device_node *prevsib;
 		for (prevsib = np->parent->child;
 		     prevsib->sibling != np;
 		     prevsib = prevsib->sibling)
@@ -2083,6 +2086,25 @@ int of_detach_node(struct device_node *np)
 	}
 
 	of_node_set_flag(np, OF_DETACHED);
+}
+
+/**
+ * of_detach_node - "Unplug" a node from the device tree.
+ *
+ * The caller must hold a reference to the node.  The memory associated with
+ * the node is not freed until its refcount goes to zero.
+ */
+int of_detach_node(struct device_node *np)
+{
+	unsigned long flags;
+	int rc = 0;
+
+	rc = of_reconfig_notify(OF_RECONFIG_DETACH_NODE, np);
+	if (rc)
+		return rc;
+
+	raw_spin_lock_irqsave(&devtree_lock, flags);
+	__of_detach_node(np);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
 	of_node_remove(np);
