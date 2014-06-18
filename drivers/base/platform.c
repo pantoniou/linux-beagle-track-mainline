@@ -981,6 +981,7 @@ static int of_platform_notify(struct notifier_block *nb,
 {
 	struct device_node *dn;
 	struct platform_device *pdev_parent, *pdev;
+	bool children_left;
 
 	if (action == OF_RECONFIG_DYNAMIC_CREATE_DEV) {
 
@@ -1013,7 +1014,7 @@ static int of_platform_notify(struct notifier_block *nb,
 			return NOTIFY_OK;	/* no? not meant for us */
 
 		/* unregister takes one ref away */
-		platform_device_unregister(pdev);
+		of_platform_device_destroy(&pdev->dev, &children_left);
 
 		/* and put the reference of the find */
 		of_dev_put(pdev);
