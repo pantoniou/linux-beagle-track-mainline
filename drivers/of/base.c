@@ -127,12 +127,23 @@ static const char *safe_name(struct kobject *kobj, const char *orig_name)
 	return name;
 }
 
-static int __of_add_property_sysfs(struct device_node *np, struct property *pp)
+static int __of_add_property_sysfs(struct device_node *np, struct property *pp,
+		int ignore_dup_name)
 {
 	int rc;
 
 	/* Important: Don't leak passwords */
 	bool secure = strncmp(pp->name, "security-", 9) == 0;
+
+	/* ignore duplicate name (transaction case) */
+	if (ignore_dup_name) {
+		struct kernfs_node *kn = sysfs_get_dirent(np->kobj.sd,
+				pp->name);
+		if (kn) {
+			sysfs_put(kn);
+			return 0;
+		}
+	}
 
 	sysfs_bin_attr_init(&pp->attr);
 	pp->attr.attr.name = safe_name(&np->kobj, pp->name);
@@ -167,7 +178,7 @@ static int __of_node_add(struct device_node *np)
 		return rc;
 
 	for_each_property_of_node(np, pp)
-		__of_add_property_sysfs(np, pp);
+		__of_add_property_sysfs(np, pp, 1);
 
 	return 0;
 }
@@ -1677,6 +1688,13 @@ int __of_add_property(struct device_node *np, struct property *prop)
 	return 0;
 }
 
+void __of_add_property_post(struct device_node *np, struct property *prop,
+		int ignore_dup_name)
+{
+	if (of_node_is_attached(np))
+		__of_add_property_sysfs(np, prop, ignore_dup_name);
+}
+
 /**
  * of_add_property - Add a property to a node
  */
@@ -1695,8 +1713,7 @@ int of_add_property(struct device_node *np, struct property *prop)
 	if (rc)
 		return rc;
 
-	if (of_node_is_attached(np))
-		__of_add_property_sysfs(np, prop);
+	__of_add_property_post(np, prop, 0);
 
 	return rc;
 }
@@ -1718,6 +1735,13 @@ int __of_remove_property(struct device_node *np, struct property *prop)
 	np->deadprops = prop;
 
 	return 0;
+}
+
+void __of_remove_property_post(struct device_node *np, struct property *prop)
+{
+	/* at early boot, bail here and defer setup to of_init() */
+	if (of_kset)
+		sysfs_remove_bin_file(&np->kobj, &prop->attr);
 }
 
 /**
@@ -1744,11 +1768,7 @@ int of_remove_property(struct device_node *np, struct property *prop)
 	if (rc)
 		return rc;
 
-	/* at early boot, bail hear and defer setup to of_init() */
-	if (!of_kset)
-		return 0;
-
-	sysfs_remove_bin_file(&np->kobj, &prop->attr);
+	__of_remove_property_post(np, prop);
 
 	return 0;
 }
@@ -1779,6 +1799,19 @@ int __of_update_property(struct device_node *np, struct property *newprop,
 	return 0;
 }
 
+void __of_update_property_post(struct device_node *np, struct property *newprop,
+		struct property *oldprop)
+{
+	/* At early boot, bail out and defer setup to of_init() */
+	if (!of_kset)
+		return;
+
+	/* Update the sysfs attribute */
+	if (oldprop)
+		sysfs_remove_bin_file(&np->kobj, &oldprop->attr);
+	__of_add_property_sysfs(np, newprop, 0);
+}
+
 /*
  * of_update_property - Update a property in a node, if the property does
  * not exist, add it.
@@ -1807,14 +1840,7 @@ int of_update_property(struct device_node *np, struct property *prop)
 	if (rc)
 		return rc;
 
-	/* At early boot, bail out and defer setup to of_init() */
-	if (!of_kset)
-		return 0;
-
-	/* Update the sysfs attribute */
-	if (oldprop)
-		sysfs_remove_bin_file(&np->kobj, &oldprop->attr);
-	__of_add_property_sysfs(np, prop);
+	__of_update_property_post(np, prop, oldprop);
 
 	return 0;
 }

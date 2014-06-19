@@ -104,6 +104,11 @@ void __of_attach_node(struct device_node *np)
 	of_node_clear_flag(np, OF_DETACHED);
 }
 
+void __of_attach_node_post(struct device_node *np)
+{
+	of_node_add(np);
+}
+
 /**
  * of_attach_node - Plug a device node into the tree and global list.
  */
@@ -120,7 +125,7 @@ int of_attach_node(struct device_node *np)
 	__of_attach_node(np);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
-	of_node_add(np);
+	__of_attach_node_post(np);
 	return 0;
 }
 
@@ -160,6 +165,11 @@ void __of_detach_node(struct device_node *np)
 	of_node_set_flag(np, OF_DETACHED);
 }
 
+void __of_detach_node_post(struct device_node *np)
+{
+	of_node_remove(np);
+}
+
 /**
  * of_detach_node - "Unplug" a node from the device tree.
  *
@@ -179,7 +189,7 @@ int of_detach_node(struct device_node *np)
 	__of_detach_node(np);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
-	of_node_remove(np);
+	__of_detach_node_post(np);
 	return rc;
 }
 

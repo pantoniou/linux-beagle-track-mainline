@@ -60,12 +60,20 @@ static inline int of_reconfig_notify(unsigned long action, void *p)
 #endif /* CONFIG_OF_DYNAMIC */
 
 extern int __of_add_property(struct device_node *np, struct property *prop);
+extern void __of_add_property_post(struct device_node *np,
+		struct property *prop, int ignore_dup_name);
 extern int __of_remove_property(struct device_node *np, struct property *prop);
+extern void __of_remove_property_post(struct device_node *np,
+		struct property *prop);
 extern int __of_update_property(struct device_node *np,
 		struct property *newprop, struct property **oldprop);
+extern void __of_update_property_post(struct device_node *np,
+		struct property *newprop, struct property *oldprop);
 
 extern void __of_attach_node(struct device_node *np);
+extern void __of_attach_node_post(struct device_node *np);
 extern void __of_detach_node(struct device_node *np);
+extern void __of_detach_node_post(struct device_node *np);
 
 /**
  * General utilities for working with live trees.
