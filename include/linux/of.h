@@ -98,6 +98,8 @@ static inline int of_node_is_attached(struct device_node *node)
 #ifdef CONFIG_OF_DYNAMIC
 extern struct device_node *of_node_get(struct device_node *node);
 extern void of_node_put(struct device_node *node);
+extern int of_property_notify(int action, struct device_node *np,
+			      struct property *prop);
 #else /* CONFIG_OF_DYNAMIC */
 /* Dummy ref counting routines - to be implemented later */
 static inline struct device_node *of_node_get(struct device_node *node)
@@ -105,6 +107,11 @@ static inline struct device_node *of_node_get(struct device_node *node)
 	return node;
 }
 static inline void of_node_put(struct device_node *node) { }
+static inline int of_property_notify(int action, struct device_node *np,
+			      struct property *prop)
+{
+	return 0;
+}
 #endif /* !CONFIG_OF_DYNAMIC */
 
 #ifdef CONFIG_OF
@@ -281,9 +288,17 @@ extern int of_property_match_string(struct device_node *np,
 				    const char *string);
 extern int of_property_count_strings(struct device_node *np,
 				     const char *propname);
+int __of_device_is_compatible(const struct device_node *device,
+				     const char *compat, const char *type,
+				     const char *name);
 extern int of_device_is_compatible(const struct device_node *device,
 				   const char *);
+extern int __of_device_is_available(const struct device_node *device);
 extern int of_device_is_available(const struct device_node *device);
+
+extern const void *__of_get_property(const struct device_node *node,
+				const char *name,
+				int *lenp);
 extern const void *of_get_property(const struct device_node *node,
 				const char *name,
 				int *lenp);

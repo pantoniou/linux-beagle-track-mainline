@@ -368,7 +368,7 @@ EXPORT_SYMBOL(of_find_all_nodes);
  * Find a property with a given name for a given node
  * and return the value.
  */
-static const void *__of_get_property(const struct device_node *np,
+const void *__of_get_property(const struct device_node *np,
 				     const char *name, int *lenp)
 {
 	struct property *pp = __of_find_property(np, name, lenp);
@@ -383,9 +383,13 @@ static const void *__of_get_property(const struct device_node *np,
 const void *of_get_property(const struct device_node *np, const char *name,
 			    int *lenp)
 {
-	struct property *pp = of_find_property(np, name, lenp);
+	unsigned long flags;
+	const void *value;
 
-	return pp ? pp->value : NULL;
+	raw_spin_lock_irqsave(&devtree_lock, flags);
+	value = __of_get_property(np, name, lenp);
+	raw_spin_unlock_irqrestore(&devtree_lock, flags);
+	return value;
 }
 EXPORT_SYMBOL(of_get_property);
 
@@ -522,7 +526,7 @@ EXPORT_SYMBOL(of_get_cpu_node);
  * 10. type
  * 11. name
  */
-static int __of_device_is_compatible(const struct device_node *device,
+int __of_device_is_compatible(const struct device_node *device,
 				     const char *compat, const char *type, const char *name)
 {
 	struct property *prop;
@@ -605,7 +609,7 @@ EXPORT_SYMBOL(of_machine_is_compatible);
  *  Returns 1 if the status property is absent or set to "okay" or "ok",
  *  0 otherwise
  */
-static int __of_device_is_available(const struct device_node *device)
+int __of_device_is_available(const struct device_node *device)
 {
 	const char *status;
 	int statlen;
@@ -1804,7 +1808,7 @@ int of_count_phandle_with_args(const struct device_node *np, const char *list_na
 EXPORT_SYMBOL(of_count_phandle_with_args);
 
 #if defined(CONFIG_OF_DYNAMIC)
-static int of_property_notify(int action, struct device_node *np,
+int of_property_notify(int action, struct device_node *np,
 			      struct property *prop)
 {
 	struct of_prop_reconfig pr;
@@ -1816,12 +1820,6 @@ static int of_property_notify(int action, struct device_node *np,
 	pr.dn = np;
 	pr.prop = prop;
 	return of_reconfig_notify(action, &pr);
-}
-#else
-static int of_property_notify(int action, struct device_node *np,
-			      struct property *prop)
-{
-	return 0;
 }
 #endif
 
