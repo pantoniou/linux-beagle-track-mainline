@@ -50,6 +50,8 @@ DEFINE_MUTEX(of_aliases_mutex);
  */
 DEFINE_RAW_SPINLOCK(devtree_lock);
 
+DEFINE_MUTEX(of_transaction_mutex);
+
 int of_n_addr_cells(struct device_node *np)
 {
 	const __be32 *ip;
@@ -1872,13 +1874,16 @@ int of_add_property(struct device_node *np, struct property *prop)
 	if (rc)
 		return rc;
 
+	mutex_lock(&of_transaction_mutex);
+
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 	rc = __of_add_property(np, prop);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
-	if (rc)
-		return rc;
 
-	__of_add_property_post(np, prop, 0);
+	if (rc == 0)
+		__of_add_property_post(np, prop, 0);
+
+	mutex_unlock(&of_transaction_mutex);
 
 	return rc;
 }
@@ -1926,16 +1931,18 @@ int of_remove_property(struct device_node *np, struct property *prop)
 	if (rc)
 		return rc;
 
+	mutex_lock(&of_transaction_mutex);
+
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 	rc = __of_remove_property(np, prop);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
-	if (rc)
-		return rc;
+	if (rc == 0)
+		__of_remove_property_post(np, prop);
 
-	__of_remove_property_post(np, prop);
+	mutex_unlock(&of_transaction_mutex);
 
-	return 0;
+	return rc;
 }
 
 int __of_update_property(struct device_node *np, struct property *newprop,
@@ -1999,15 +2006,18 @@ int of_update_property(struct device_node *np, struct property *prop)
 	if (rc)
 		return rc;
 
+	mutex_lock(&of_transaction_mutex);
+
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 	rc = __of_update_property(np, prop, &oldprop);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
-	if (rc)
-		return rc;
 
-	__of_update_property_post(np, prop, oldprop);
+	if (rc == 0)
+		__of_update_property_post(np, prop, oldprop);
 
-	return 0;
+	mutex_unlock(&of_transaction_mutex);
+
+	return rc;
 }
 
 #if defined(CONFIG_OF_DYNAMIC)
@@ -2070,12 +2080,17 @@ int of_attach_node(struct device_node *np)
 	if (rc)
 		return rc;
 
+	mutex_lock(&of_transaction_mutex);
+
 	BUG_ON(!of_allnodes);
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 	__of_attach_node(np);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
 	__of_attach_node_post(np);
+
+	mutex_unlock(&of_transaction_mutex);
+
 	return 0;
 }
 
@@ -2135,11 +2150,16 @@ int of_detach_node(struct device_node *np)
 	if (rc)
 		return rc;
 
+	mutex_lock(&of_transaction_mutex);
+
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 	__of_detach_node(np);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
 	__of_detach_node_post(np);
+
+	mutex_unlock(&of_transaction_mutex);
+
 	return rc;
 }
 #endif /* defined(CONFIG_OF_DYNAMIC) */

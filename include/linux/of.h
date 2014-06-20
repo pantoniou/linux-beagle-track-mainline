@@ -121,6 +121,8 @@ extern struct device_node *of_allnodes;
 extern struct device_node *of_chosen;
 extern struct device_node *of_aliases;
 extern raw_spinlock_t devtree_lock;
+extern struct mutex of_aliases_mutex;
+extern struct mutex of_transaction_mutex;
 
 static inline bool of_have_populated_dt(void)
 {
@@ -881,5 +883,240 @@ static inline struct device_node *__of_create_empty_node( const char *name,
 }
 
 #endif	/* !CONFIG_OF */
+
+/**
+ * struct of_transaction_entry	- Holds a transaction entry
+ *
+ * @node:	list_head for the log list
+ * @action:	notifier action
+ * @np:		pointer to the device node affected
+ * @prop:	pointer to the property affected
+ * @old_prop:	hold a pointer to the original property
+ *
+ * Every modification of the device tree during a transaction
+ * is held in a list of of_transaction_entry structures.
+ * That way we can recover from a partial application, or we can
+ * revert the transaction
+ */
+struct of_transaction_entry {
+	struct list_head node;
+	unsigned long action;
+	struct device_node *np;
+	struct property *prop;
+	struct property *old_prop;
+
+	/* if property change on status
+	*/
+	int device_state_change;
+};
+
+/* possible states of the transaction */
+enum of_transaction_state {
+	OFT_READY,		/* ready for use (i.e. using start()       */
+	OFT_IN_PROGRESS,	/* application in progress, start() issued */
+	OFT_COMMITTING,		/* committing but not yet completed        */
+	OFT_COMMITTED,		/* has been commited to live tree          */
+	OFT_REVERTING,		/* revert is in progress                   */
+};
+
+/**
+ * struct of_transaction - transaction tracker structure
+ *
+ * @lock:	lock for accessing the te_list and state entries
+ * @te_list:	list_head for the transaction entries
+ * @state:	State of the transaction
+ *
+ * Transactions are a convenient way to apply bulk changes to the
+ * live tree. In case of an error, changes are rolled-back.
+ * Transactions live on after initial application, and if not
+ * destroyed after use, they can be reverted in one single call.
+ */
+struct of_transaction {
+	struct mutex lock;
+	struct list_head te_list;
+	enum of_transaction_state state;
+};
+
+/* forward iterator */
+#define for_each_transaction_entry(_oft, _te) \
+	list_for_each_entry(_te, &(_oft)->te_list, node)
+
+/* reverse iterator */
+#define for_each_transaction_entry_reverse(_oft, _te) \
+	list_for_each_entry_reverse(_te, &(_oft)->te_list, node)
+
+#ifdef CONFIG_OF
+
+/**
+ * of_transaction_init - Initialize a transaction for use
+ *
+ * @oft:	transaction pointer
+ *
+ * Initialize a transaction putting it in READY state.
+ * Returns 0 on success, a negative error value in case of an error.
+ */
+int of_transaction_init(struct of_transaction *oft);
+
+/**
+ * of_transaction_destroy - Destroy a transaction
+ *
+ * @oft:	transaction pointer
+ *
+ * Destroy a transaction, which is in either a COMMITED or READY state.
+ * Returns 0 on success, a negative error value in case of an error.
+ */
+int of_transaction_destroy(struct of_transaction *oft);
+
+/**
+ * of_transaction_start - Start a transaction
+ *
+ * @oft:	transaction pointer
+ *
+ * Starts a transaction, by moving it from READY to IN_PROGRESS state.
+ * The global transaction mutex will be held on sucess, so that no
+ * transactions/live updates can occur until either the transaction
+ * completes (i.e. moves to COMMITTED state), or aborted.
+ * Returns 0 on success, a negative error value in case of an error.
+ */
+int of_transaction_start(struct of_transaction *oft);
+
+/**
+ * of_transaction_abort - Aborts a transaction in progress
+ *
+ * @oft:	transaction pointer
+ *
+ * Aborts a transaction in IN_PROGRESS state, reverting the state
+ * of the live tree to the condition it was before application.
+ * The global transaction mutex is released if successful.
+ * Returns 0 on success, a negative error value in case of an error.
+ */
+int of_transaction_abort(struct of_transaction *oft);
+
+/**
+ * of_transaction_abort - Aborts a transaction in progress
+ *
+ * @oft:	transaction pointer
+ *
+ * Aborts a transaction in IN_PROGRESS state, reverting the state
+ * of the live tree to the condition it was before application.
+ * The global transaction mutex is released if successful, and the
+ * state transitions to COMMITTED.
+ * Any side-effects of live tree state changes are applied here on
+ * sucess, like creation/destruction of devices and side-effects
+ * like creation of sysfs properties and directories.
+ * Returns 0 on success, a negative error value in case of an error.
+ */
+int of_transaction_commit(struct of_transaction *oft);
+
+/**
+ * of_transaction_revert - Reverts an applied transaction
+ *
+ * @oft:	transaction pointer
+ *
+ * Aborts a transaction in COMMITTED state, reverting the state
+ * of the live tree to the condition it was before application.
+ * Any side-effects of live tree state reverting to the original
+ * state, like creation/destruction of devices and side-effects
+ * like removal of sysfs properties and directories are applied.
+ * Returns 0 on success, a negative error value in case of an error.
+ */
+int of_transaction_revert(struct of_transaction *oft);
+
+/**
+ * of_transaction_action - Perform a transaction action
+ *
+ * @oft:	transaction pointer
+ * @action:	action to perform
+ * @np:		Pointer to device node
+ * @prop:	Pointer to property
+ *
+ * On action being one of:
+ * + OF_RECONFIG_ATTACH_NODE
+ * + OF_RECONFIG_DETACH_NODE,
+ * + OF_RECONFIG_ADD_PROPERTY
+ * + OF_RECONFIG_REMOVE_PROPERTY,
+ * + OF_RECONFIG_UPDATE_PROPERTY
+ * performs a update of the live tree, while recording the
+ * act on a transaction entry. The remaining of side-effects are
+ * applied on commit.
+ * Returns 0 on success, a negative error value in case of an error.
+ */
+int of_transaction_action(struct of_transaction *oft, unsigned long action,
+		struct device_node *np, struct property *prop);
+
+#else
+
+static inline int of_transaction_init(struct of_transaction *oft)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_transaction_destroy(struct of_transaction *oft)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_transaction_start(struct of_transaction *oft)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_transaction_abort(struct of_transaction *oft)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_transaction_commit(struct of_transaction *oft)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_transaction_revert(struct of_transaction *oft)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_transaction_action(struct of_transaction *oft,
+		unsigned long action, struct device_node *np,
+		struct property *prop)
+{
+	return -ENOTSUPP;
+}
+
+#endif
+
+static inline int of_transaction_attach_node(struct of_transaction *oft,
+		struct device_node *np)
+{
+	return of_transaction_action(oft, OF_RECONFIG_ATTACH_NODE, np, NULL);
+}
+
+static inline int of_transaction_detach_node(struct of_transaction *oft,
+		struct device_node *np)
+{
+	return of_transaction_action(oft,
+			OF_RECONFIG_DETACH_NODE, np, NULL);
+}
+
+static inline int of_transaction_add_property(struct of_transaction *oft,
+		struct device_node *np, struct property *prop)
+{
+	return of_transaction_action(oft,
+			OF_RECONFIG_ADD_PROPERTY, np, prop);
+}
+
+static inline int of_transaction_remove_property(struct of_transaction *oft,
+		struct device_node *np, struct property *prop)
+{
+	return of_transaction_action(oft,
+			OF_RECONFIG_REMOVE_PROPERTY, np, prop);
+}
+
+static inline int of_transaction_update_property(struct of_transaction *oft,
+		struct device_node *np, struct property *prop)
+{
+	return of_transaction_action(oft,
+			OF_RECONFIG_UPDATE_PROPERTY, np, prop);
+}
 
 #endif /* _LINUX_OF_H */
