@@ -122,6 +122,8 @@ extern struct device_node *of_allnodes;
 extern struct device_node *of_chosen;
 extern struct device_node *of_aliases;
 extern raw_spinlock_t devtree_lock;
+extern struct mutex of_aliases_mutex;
+extern struct mutex of_transaction_mutex;
 
 static inline bool of_have_populated_dt(void)
 {
@@ -885,6 +887,136 @@ static inline struct device_node *__of_create_empty_node( const char *name,
 
 #endif	/* !CONFIG_OF */
 
+/**
+ * struct of_transaction_entry	- Holds a DT log entry
+ * @node:	list_head for the log list
+ * @action:	notifier action
+ * @np:		pointer to the device node affected
+ * @prop:	pointer to the property affected
+ * @old_prop:	hold a pointer to the original property
+ *
+ * Every modification of the device tree during application of the
+ * overlay is held in a list of of_overlay_log_entry structures.
+ * That way we can recover from a partial application, or we can
+ * revert the overlay properly.
+ */
+struct of_transaction_entry {
+	struct list_head node;
+	unsigned long action;
+	struct device_node *np;
+	struct property *prop;
+	struct property *old_prop;
+
+	/* if property change on status
+	*/
+	int device_state_change;
+};
+
+enum of_transaction_state {
+	OFT_READY,
+	OFT_IN_PROGRESS,
+	OFT_COMMITTING,
+	OFT_COMMITTED,
+	OFT_REVERTING,
+};
+
+struct of_transaction {
+	struct list_head te_list;
+	struct mutex lock;
+	enum of_transaction_state state;
+};
+
+#define for_each_transaction_entry(_oft, _te) \
+	list_for_each_entry(_te, &(_oft)->te_list, node)
+
+#define for_each_transaction_entry_reverse(_oft, _te) \
+	list_for_each_entry_reverse(_te, &(_oft)->te_list, node)
+
+#ifdef CONFIG_OF
+
+int of_transaction_init(struct of_transaction *oft);
+int of_transaction_destroy(struct of_transaction *oft);
+int of_transaction_start(struct of_transaction *oft);
+int of_transaction_abort(struct of_transaction *oft);
+int of_transaction_commit(struct of_transaction *oft);
+int of_transaction_revert(struct of_transaction *oft);
+int of_transaction_action(struct of_transaction *oft, unsigned long action,
+		struct device_node *np, struct property *prop);
+
+#else
+
+static inline int of_transaction_init(struct of_transaction *oft)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_transaction_destroy(struct of_transaction *oft)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_transaction_start(struct of_transaction *oft)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_transaction_abort(struct of_transaction *oft)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_transaction_commit(struct of_transaction *oft)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_transaction_revert(struct of_transaction *oft)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_transaction_action(struct of_transaction *oft,
+		unsigned long action, struct device_node *np,
+		struct property *prop)
+{
+	return -ENOTSUPP;
+}
+
+#endif
+
+static inline int of_transaction_attach_node(struct of_transaction *oft,
+		struct device_node *np)
+{
+	return of_transaction_action(oft, OF_RECONFIG_ATTACH_NODE, np, NULL);
+}
+
+static inline int of_transaction_detach_node(struct of_transaction *oft,
+		struct device_node *np)
+{
+	return of_transaction_action(oft,
+			OF_RECONFIG_DETACH_NODE, np, NULL);
+}
+
+static inline int of_transaction_add_property(struct of_transaction *oft,
+		struct device_node *np, struct property *prop)
+{
+	return of_transaction_action(oft,
+			OF_RECONFIG_ADD_PROPERTY, np, prop);
+}
+
+static inline int of_transaction_remove_property(struct of_transaction *oft,
+		struct device_node *np, struct property *prop)
+{
+	return of_transaction_action(oft,
+			OF_RECONFIG_REMOVE_PROPERTY, np, prop);
+}
+
+static inline int of_transaction_update_property(struct of_transaction *oft,
+		struct device_node *np, struct property *prop)
+{
+	return of_transaction_action(oft,
+			OF_RECONFIG_UPDATE_PROPERTY, np, prop);
+}
 
 /* illegal phandle value (set when unresolved) */
 #define OF_PHANDLE_ILLEGAL	0xdeadbeef
