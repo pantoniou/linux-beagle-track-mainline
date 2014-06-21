@@ -180,17 +180,29 @@ int of_detach_node(struct device_node *np)
 	return rc;
 }
 
+static struct device_node *of_alldeadnodes;
+static DEFINE_RAW_SPINLOCK(deadtree_lock);
+
 /**
  *	of_node_release - release a dynamically allocated node
  *	@kref:  kref element of the node to be released
  *
  *	In of_node_put() this function is passed to kref_put()
  *	as the destructor.
+ *
+ *	There is an option to not free the node, since due to the
+ *	way that node and property life-cycles are not completely
+ *	managed, we can't free the memory of a node at will.
+ *	Instead we move the node to the dead nodes list where it will
+ *	remain until the life-cycle issues are resolved.
  */
-static void of_node_release(struct kobject *kobj)
+void of_node_release(struct kobject *kobj)
 {
+	/*  we probe the of-node-keep chosen prop once */
+	static int node_keep = -1;
 	struct device_node *node = kobj_to_device_node(kobj);
-	struct property *prop = node->properties;
+	struct property *prop;
+	unsigned long flags;
 
 	/* We should never be releasing nodes that haven't been detached. */
 	if (!of_node_check_flag(node, OF_DETACHED)) {
@@ -199,23 +211,55 @@ static void of_node_release(struct kobject *kobj)
 		return;
 	}
 
-	if (!of_node_check_flag(node, OF_DYNAMIC))
+	/* we should not be trying to release the root */
+	if (WARN_ON(node == of_allnodes))
 		return;
 
-	while (prop) {
-		struct property *next = prop->next;
+	/* read the chosen boolean property "of-node-keep" once */
+	if (node_keep == -1)
+		node_keep = of_property_read_bool(of_chosen, "of-node-keep");
 
-		kfree(prop->name);
-		kfree(prop->value);
-		kfree(prop);
-		prop = next;
+	/* default is to free everything */
+	if (!node_keep) {
 
-		if (!prop) {
-			prop = node->deadprops;
-			node->deadprops = NULL;
+		/* free normal properties */
+		while ((prop = node->properties) != NULL) {
+			node->properties = prop->next;
+			kfree(prop->name);
+			kfree(prop->value);
+			kfree(prop);
 		}
+
+		/* free deap properties */
+		while ((prop = node->deadprops) != NULL) {
+			node->deadprops = prop->next;
+			kfree(prop->name);
+			kfree(prop->value);
+			kfree(prop);
+		}
+
+		/* free the node */
+		kfree(node->full_name);
+		kfree(node->data);
+		kfree(node);
+		return;
 	}
-	kfree(node->full_name);
-	kfree(node->data);
-	kfree(node);
+
+	pr_info("%s: dead node \"%s\"\n", __func__, node->full_name);
+
+	/* can't use devtree lock; at of_node_put caller might be holding it */
+	raw_spin_lock_irqsave(&deadtree_lock, flags);
+
+	/* move all properties to dead properties */
+	while ((prop = node->properties) != NULL) {
+		node->properties = prop->next;
+		prop->next = node->deadprops;
+		node->deadprops = prop;
+	}
+
+	/* move node to alldeadnodes */
+	node->allnext = of_alldeadnodes;
+	of_alldeadnodes = node;
+
+	raw_spin_unlock_irqrestore(&deadtree_lock, flags);
 }
