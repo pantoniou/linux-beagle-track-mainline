@@ -312,6 +312,8 @@ extern int of_add_property(struct device_node *np, struct property *prop);
 extern int of_remove_property(struct device_node *np, struct property *prop);
 extern int of_update_property(struct device_node *np, struct property *newprop);
 
+#if defined(CONFIG_OF_DYNAMIC)
+
 /* For updating the device tree at runtime */
 #define OF_RECONFIG_ATTACH_NODE		0x0001
 #define OF_RECONFIG_DETACH_NODE		0x0002
@@ -326,10 +328,32 @@ struct of_prop_reconfig {
 
 extern int of_reconfig_notifier_register(struct notifier_block *);
 extern int of_reconfig_notifier_unregister(struct notifier_block *);
-extern int of_reconfig_notify(unsigned long, void *);
 
 extern int of_attach_node(struct device_node *);
 extern int of_detach_node(struct device_node *);
+
+#else
+
+static inline int of_reconfig_notifier_register(struct notifier_block *);
+{
+	return 0;
+}
+
+static inline int of_reconfig_notifier_unregister(struct notifier_block *)
+{
+	return 0;
+}
+
+static inline int of_attach_node(struct device_node *)
+{
+	return -ENOTSUPP;
+}
+
+static inline int of_detach_node(struct device_node *)
+{
+	return -ENOTSUPP;
+}
+#endif
 
 #define of_match_ptr(_ptr)	(_ptr)
 

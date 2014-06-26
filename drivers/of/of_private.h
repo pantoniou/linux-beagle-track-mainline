@@ -33,4 +33,30 @@ struct alias_prop {
 
 extern struct mutex of_mutex;
 extern struct list_head aliases_lookup;
+
+static inline struct device_node *kobj_to_device_node(struct kobject *kobj)
+{
+	return container_of(kobj, struct device_node, kobj);
+}
+
+/* if dynamic is located in dynamic.c, otherwise in base.c */
+extern void of_node_release(struct kobject *kobj);
+
+#if defined(CONFIG_OF_DYNAMIC)
+extern int of_property_notify(int action, struct device_node *np,
+			      struct property *prop);
+extern int of_reconfig_notify(unsigned long action, void *p);
+#else /* CONFIG_OF_DYNAMIC */
+static inline int of_property_notify(int action, struct device_node *np,
+				     struct property *prop)
+{
+	return 0;
+}
+
+static inline int of_reconfig_notify(unsigned long action, void *p)
+{
+	return 0;
+}
+#endif /* CONFIG_OF_DYNAMIC */
+
 #endif /* _LINUX_OF_PRIVATE_H */
