@@ -295,7 +295,17 @@ static const void *__of_get_property(const struct device_node *np,
 {
 	struct property *pp = __of_find_property(np, name, lenp);
 
-	return pp ? pp->value : NULL;
+	if (!pp)
+		return NULL;
+
+	if (pp->length > 0)
+		return pp->value;
+
+	pr_warn("__of_get_property() on boolean property %s/%s\n",
+			np->full_name, name);
+
+	/* return a pointer to an empty string */
+	return "";
 }
 
 /*
