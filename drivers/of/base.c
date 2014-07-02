@@ -40,7 +40,9 @@ static struct device_node *of_stdout;
 static struct kset *of_kset;
 
 /*
- * Used to protect the of_aliases, to hold off addition of nodes to sysfs
+ * Used to protect the of_aliases, to hold off addition of
+ * nodes to sysfs and in the case of a transaction is in
+ * progress.
  */
 DEFINE_MUTEX(of_mutex);
 
@@ -1707,13 +1709,16 @@ int of_add_property(struct device_node *np, struct property *prop)
 	if (rc)
 		return rc;
 
+	mutex_lock(&of_mutex);
+
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 	rc = __of_add_property(np, prop);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
-	if (rc)
-		return rc;
 
-	__of_add_property_post(np, prop, 0);
+	if (rc == 0)
+		__of_add_property_post(np, prop, 0);
+
+	mutex_unlock(&of_mutex);
 
 	return rc;
 }
@@ -1761,16 +1766,18 @@ int of_remove_property(struct device_node *np, struct property *prop)
 	if (rc)
 		return rc;
 
+	mutex_lock(&of_mutex);
+
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 	rc = __of_remove_property(np, prop);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
-	if (rc)
-		return rc;
+	if (rc == 0)
+		__of_remove_property_post(np, prop);
 
-	__of_remove_property_post(np, prop);
+	mutex_unlock(&of_mutex);
 
-	return 0;
+	return rc;
 }
 
 int __of_update_property(struct device_node *np, struct property *newprop,
@@ -1834,15 +1841,18 @@ int of_update_property(struct device_node *np, struct property *prop)
 	if (rc)
 		return rc;
 
+	mutex_lock(&of_mutex);
+
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 	rc = __of_update_property(np, prop, &oldprop);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
-	if (rc)
-		return rc;
 
-	__of_update_property_post(np, prop, oldprop);
+	if (rc == 0)
+		__of_update_property_post(np, prop, oldprop);
 
-	return 0;
+	mutex_unlock(&of_mutex);
+
+	return rc;
 }
 
 static void of_alias_add(struct alias_prop *ap, struct device_node *np,

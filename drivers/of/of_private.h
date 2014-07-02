@@ -89,4 +89,23 @@ struct device_node *__of_create_empty_node(const char *name,
 		const char *type, const char *full_name,
 		phandle phandle, gfp_t allocflags, unsigned long nodeflags);
 
+/* iterators for transactions, used for overlays */
+/* forward iterator */
+#define for_each_transaction_entry(_oft, _te) \
+	list_for_each_entry(_te, &(_oft)->te_list, node)
+
+/* reverse iterator */
+#define for_each_transaction_entry_reverse(_oft, _te) \
+	list_for_each_entry_reverse(_te, &(_oft)->te_list, node)
+
+/* special find property method for use by transaction users */
+extern struct property *of_transaction_find_property(
+		struct of_transaction *oft,
+		const struct device_node *np, const char *name, int *lenp);
+extern int of_transaction_device_is_available(struct of_transaction *oft,
+		const struct device_node *np);
+extern struct device_node *of_transaction_get_child_by_name(
+		struct of_transaction *oft, struct device_node *node,
+		const char *name);
+
 #endif /* _LINUX_OF_PRIVATE_H */
