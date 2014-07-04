@@ -63,11 +63,19 @@ struct device_node *__of_node_alloc(const char *name, const char *type,
 			const char *full_name, phandle phandle, gfp_t allocflags);
 
 extern int __of_add_property(struct device_node *np, struct property *prop);
+extern int __of_add_property_sysfs(struct device_node *np,
+		struct property *prop);
 extern int __of_remove_property(struct device_node *np, struct property *prop);
+extern void __of_remove_property_sysfs(struct device_node *np,
+		struct property *prop);
 extern int __of_update_property(struct device_node *np,
 		struct property *newprop, struct property **oldprop);
+extern void __of_update_property_sysfs(struct device_node *np,
+		struct property *newprop, struct property *oldprop);
 
 extern void __of_attach_node(struct device_node *np);
+extern int __of_attach_node_sysfs(struct device_node *np);
 extern void __of_detach_node(struct device_node *np);
+extern void __of_detach_node_sysfs(struct device_node *np);
 
 #endif /* _LINUX_OF_PRIVATE_H */
