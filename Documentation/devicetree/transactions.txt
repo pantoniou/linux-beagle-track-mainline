@@ -1,0 +1,41 @@
+A DT transaction is a method which allows one to apply changes
+in the live tree, in such a way that either the full set of changes
+take effect, or the state of the tree can be rolled-back to the
+state it was before it was attempted. An applied transaction
+can be rolled-back at any time.
+
+If any transaction results in the change of a state of a device
+node, a notifier for that node will be fired which allows a bus
+to create/destroy devices as directed.
+
+The sequence of a transaction is as follows.
+
+1. of_transaction_init() - initializes a transaction
+
+2. of_transaction_start() - starts a transaction; a global
+transaction lock is taken at this point and disallowes any other
+dynamic tree changes.
+
+3. A number of DT tree change calls, of_transaction_attach_node(),
+of_transaction_detach_node(), of_transaction_add_property(),
+of_transaction_remove_property, of_transaction_update_property()
+modify the live tree (but without any user-space visible changes).
+All changes are recorded in the list of of_transaction_entry of
+the transaction.
+
+4.a. No errors occured during application, so a call to
+of_transaction_commit() is issued. All the changes are made visible
+to user-space and all device creation/destruction notifiers are
+fired. The global transaction is released.
+
+4.b. An error occured, so a of_transaction_abort() call is issued.
+All changes to the live tree will be reverted. The global transaction
+lock will be released.
+
+5.a If the transaction needs not be reverted, a call to
+of_transaction_destroy will release the resources of the transaction.
+
+5.b If the transaction is to be reverted, a call to
+of_transaction_revert will do so. All device notifiers will be
+fired, and the state of the tree will be the same as before
+the call to of_start_transaction().
