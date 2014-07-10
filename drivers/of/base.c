@@ -37,7 +37,7 @@ struct device_node *of_chosen;
 struct device_node *of_aliases;
 static struct device_node *of_stdout;
 
-static struct kset *of_kset;
+struct kset *of_kset;
 
 /*
  * Used to protect the of_aliases, to hold off addition of nodes to sysfs.
