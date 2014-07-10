@@ -87,88 +87,14 @@ static inline void __of_transaction_entry_dump(struct of_transaction_entry *te)
 }
 #endif
 
-static int __of_transaction_entry_device_state(struct of_transaction *oft,
-		struct of_transaction_entry *te, int revert)
-{
-	int curr, target;
-	unsigned long action;
-	struct property *prop;
-
-	/* filter */
-	if (te->action != OF_RECONFIG_ADD_PROPERTY &&
-	    te->action != OF_RECONFIG_REMOVE_PROPERTY &&
-	    te->action != OF_RECONFIG_UPDATE_PROPERTY &&
-	    te->action != OF_RECONFIG_ATTACH_NODE &&
-	    te->action != OF_RECONFIG_ATTACH_NODE)
-		return -1;
-
-	action = te->action;
-	prop = te->prop;
-
-	/* on revert convert to the opposite */
-	if (revert) {
-		if (action == OF_RECONFIG_ADD_PROPERTY)
-			action = OF_RECONFIG_REMOVE_PROPERTY;
-		else if (action == OF_RECONFIG_REMOVE_PROPERTY)
-			action = OF_RECONFIG_ADD_PROPERTY;
-		else if (action == OF_RECONFIG_UPDATE_PROPERTY)
-			prop = te->old_prop;
-		else if (action == OF_RECONFIG_ATTACH_NODE)
-			action = OF_RECONFIG_DETACH_NODE;
-		else
-			action = OF_RECONFIG_ATTACH_NODE;
-	}
-
-	/* we only support state changes on "status" property change */
-	if ((te->action == OF_RECONFIG_ADD_PROPERTY ||
-	    te->action == OF_RECONFIG_REMOVE_PROPERTY ||
-	    te->action == OF_RECONFIG_UPDATE_PROPERTY) &&
-		of_prop_cmp(prop->name, "status"))
-		return -1;
-
-	/* note that we don't use of_transaction_find_property() */
-
-	/* current device state */
-	curr = of_device_is_available(te->np) &&
-		of_find_property(te->np, "compatible", NULL) &&
-		of_find_property(te->np, "status", NULL);
-
-	switch (action) {
-	case OF_RECONFIG_ADD_PROPERTY:
-	case OF_RECONFIG_REMOVE_PROPERTY:
-	case OF_RECONFIG_UPDATE_PROPERTY:
-
-		/* target device state */
-		if (action == OF_RECONFIG_ADD_PROPERTY ||
-		    action == OF_RECONFIG_UPDATE_PROPERTY)
-			target = !strcmp(prop->value, "okay") ||
-				!strcmp(prop->value, "ok");
-		else
-			target = 0;	/* NOTE: status removal -> disabled */
-
-		break;
-	case OF_RECONFIG_ATTACH_NODE:
-		target = curr;
-		curr = 0;
-		break;
-	case OF_RECONFIG_DETACH_NODE:
-		target = 0;
-		break;
-	}
-
-	return curr != target ? target : -1;
-}
-
 static int __of_transaction_entry_apply(struct of_transaction *oft,
 		struct of_transaction_entry *te)
 {
 	struct property *old_prop;
 	unsigned long flags;
-	int ret, state;
+	int ret;
 
 	ret = 0;
-
-	state = __of_transaction_entry_device_state(oft, te, 0);
 
 	switch (te->action) {
 	case OF_RECONFIG_ATTACH_NODE:
@@ -237,40 +163,21 @@ static int __of_transaction_entry_apply(struct of_transaction *oft,
 
 	switch (te->action) {
 	case OF_RECONFIG_ATTACH_NODE:
-		__of_attach_node_post(te->np);
+		__of_attach_node_sysfs(te->np);
 		break;
 	case OF_RECONFIG_DETACH_NODE:
-		__of_detach_node_post(te->np);
+		__of_detach_node_sysfs(te->np);
 		break;
 	case OF_RECONFIG_ADD_PROPERTY:
 		/* ignore duplicate names */
-		__of_add_property_post(te->np, te->prop, 1);
+		__of_add_property_sysfs(te->np, te->prop); /* GCL: remove duplicate names?? */
 		break;
 	case OF_RECONFIG_REMOVE_PROPERTY:
-		__of_remove_property_post(te->np, te->prop);
+		__of_remove_property_sysfs(te->np, te->prop);
 		break;
 	case OF_RECONFIG_UPDATE_PROPERTY:
-		__of_update_property_post(te->np, te->prop, te->old_prop);
+		__of_update_property_sysfs(te->np, te->prop, te->old_prop);
 		break;
-	}
-
-	if (state != -1) {
-		pr_debug("of_transaction: %s device for node '%s'\n",
-				state ? "create" : "remove",
-				te->np->full_name);
-
-		ret = of_reconfig_notify(state ?
-				OF_RECONFIG_DYNAMIC_CREATE_DEV :
-				OF_RECONFIG_DYNAMIC_DESTROY_DEV,
-				te->np);
-		if (ret != 0) {
-			pr_err("of_transaction: failed %s device @%s (%d)\n",
-					state ? "create" : "remove",
-					te->np->full_name, ret);
-			/* drop the error; devices probe fails; that's OK */
-			ret = 0;
-		}
-
 	}
 
 	return 0;
@@ -282,27 +189,7 @@ static int __of_transaction_entry_revert(struct of_transaction *oft,
 	struct property *prop, *old_prop, **propp;
 	unsigned long action, flags;
 	struct device_node *np;
-	int ret, state;
-
-	state = __of_transaction_entry_device_state(oft, te, 1);
-
-	if (state != -1) {
-		pr_debug("of_transaction: %s device for node '%s'\n",
-				state  ? "create" : "remove",
-				te->np->full_name);
-
-		ret = of_reconfig_notify(state ?
-				OF_RECONFIG_DYNAMIC_CREATE_DEV :
-				OF_RECONFIG_DYNAMIC_DESTROY_DEV,
-				te->np);
-		if (ret != 0) {
-			pr_err("of_transaction: failed %s device @%s (%d)\n",
-					state ? "create" : "remove",
-					te->np->full_name, ret);
-			/* drop the error; devices probe fails; that's OK */
-			ret = 0;
-		}
-	}
+	int ret;
 
 	/* get node and immediately put */
 	action = te->action;
@@ -329,12 +216,14 @@ static int __of_transaction_entry_revert(struct of_transaction *oft,
 		ret = of_property_notify(OF_RECONFIG_UPDATE_PROPERTY,
 				np, old_prop);
 		break;
+	default:
+		return -EINVAL;
 	}
 
 	if (ret) {
 		pr_err("%s: notifier error @%s\n", __func__,
 				te->np->full_name);
-		goto out_revert;
+		return ret;
 	}
 
 	mutex_lock(&of_mutex);
@@ -400,33 +289,24 @@ static int __of_transaction_entry_revert(struct of_transaction *oft,
 
 	switch (action) {
 	case OF_RECONFIG_ATTACH_NODE:
-		__of_detach_node_post(np);
+		__of_detach_node_sysfs(np);
 		break;
 	case OF_RECONFIG_DETACH_NODE:
-		__of_attach_node_post(np);
+		__of_attach_node_sysfs(np);
 		break;
 	case OF_RECONFIG_ADD_PROPERTY:
-		__of_remove_property_post(np, prop);
+		__of_remove_property_sysfs(np, prop);
 		break;
 	case OF_RECONFIG_REMOVE_PROPERTY:
-		__of_add_property_post(np, prop, 0);
+		__of_add_property_sysfs(np, prop);
 		break;
 	case OF_RECONFIG_UPDATE_PROPERTY:
-		__of_update_property_post(np, prop, old_prop);
+		__of_update_property_sysfs(np, prop, old_prop);
 		break;
 	}
 
 out_unlock:
 	mutex_unlock(&of_mutex);
-
-out_revert:
-	/* revert creation of device */
-	if (ret && state != -1)
-		of_reconfig_notify(!state ?
-			OF_RECONFIG_DYNAMIC_CREATE_DEV :
-			OF_RECONFIG_DYNAMIC_DESTROY_DEV,
-			te->np);
-
 	return ret;
 }
 
