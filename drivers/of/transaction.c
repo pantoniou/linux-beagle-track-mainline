@@ -353,17 +353,15 @@ void of_transaction_abort(struct of_transaction *oft)
  * of_transaction_apply - Applies a transaction
  *
  * @oft:	transaction pointer
- * @force:	continue even in case of an error
  *
  * Applies a transaction to the live tree.
  * Any side-effects of live tree state changes are applied here on
  * sucess, like creation/destruction of devices and side-effects
  * like creation of sysfs properties and directories.
  * Returns 0 on success, a negative error value in case of an error.
- * On error the partially applied effects are reverted if the @force
- * parameter is not set.
+ * On error the partially applied effects are reverted.
  */
-int of_transaction_apply(struct of_transaction *oft, int force)
+int of_transaction_apply(struct of_transaction *oft)
 {
 	struct of_transaction_entry *te;
 	int ret;
@@ -379,16 +377,12 @@ int of_transaction_apply(struct of_transaction *oft, int force)
 		__of_transaction_entry_dump(te);
 		ret = __of_transaction_entry_apply(oft, te);
 		if (ret) {
-			pr_err("%s: Error applying transaction (%d)\n",
-					__func__, ret);
-			if (!force) {
-				list_for_each_entry_continue_reverse(te,
-						&oft->te_list, node) {
-					__of_transaction_entry_dump(te);
-					__of_transaction_entry_revert(oft, te);
-				}
-				return ret;
+			pr_err("%s: Error applying transaction (%d)\n", __func__, ret);
+			list_for_each_entry_continue_reverse(te, &oft->te_list, node) {
+				__of_transaction_entry_dump(te);
+				__of_transaction_entry_revert(oft, te);
 			}
+			return ret;
 		}
 	}
 
@@ -401,7 +395,6 @@ int of_transaction_apply(struct of_transaction *oft, int force)
  * of_transaction_revert - Reverts an applied transaction
  *
  * @oft:	transaction pointer
- * @force:	continue even in case of an error
  *
  * Reverts a transaction returning the state of the tree to what it
  * was before the application.
@@ -409,7 +402,7 @@ int of_transaction_apply(struct of_transaction *oft, int force)
  * removal of sysfs properties and directories are applied.
  * Returns 0 on success, a negative error value in case of an error.
  */
-int of_transaction_revert(struct of_transaction *oft, int force)
+int of_transaction_revert(struct of_transaction *oft)
 {
 	struct of_transaction_entry *te, *ten;
 	int ret;
@@ -419,16 +412,12 @@ int of_transaction_revert(struct of_transaction *oft, int force)
 		__of_transaction_entry_dump(te);
 		ret = __of_transaction_entry_revert(oft, te);
 		if (ret) {
-			pr_err("%s: Error reverting transaction (%d)\n",
-					__func__, ret);
-			if (!force) {
-				list_for_each_entry_continue(te,
-						&oft->te_list, node) {
-					__of_transaction_entry_dump(te);
-					__of_transaction_entry_apply(oft, te);
-				}
-				return ret;
+			pr_err("%s: Error reverting transaction (%d)\n", __func__, ret);
+			list_for_each_entry_continue(te, &oft->te_list, node) {
+				__of_transaction_entry_dump(te);
+				__of_transaction_entry_apply(oft, te);
 			}
+			return ret;
 		}
 	}
 
