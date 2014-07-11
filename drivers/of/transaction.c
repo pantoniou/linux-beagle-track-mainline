@@ -416,12 +416,6 @@ int of_transaction_revert(struct of_transaction *oft)
 			return ret;
 		}
 	}
-
-	/* destroy everything */
-	list_for_each_entry_safe_reverse(te, ten, &oft->te_list, node)
-		__of_transaction_entry_destroy(te);
-	pr_debug("of_transaction: reverted.\n");
-
 	return 0;
 }
 
