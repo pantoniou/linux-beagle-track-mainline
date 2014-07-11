@@ -64,32 +64,49 @@ static inline void __of_transaction_entry_dump(struct of_transaction_entry *te)
 }
 #endif
 
+static void __of_transaction_entry_invert(struct of_transaction_entry *te,
+					  struct of_transaction_entry *rte)
+{
+	*rte = *te;
+	switch (te->action) {
+	case OF_RECONFIG_ATTACH_NODE:
+		rte->action = OF_RECONFIG_DETACH_NODE;
+		break;
+	case OF_RECONFIG_DETACH_NODE:
+		rte->action = OF_RECONFIG_ATTACH_NODE;
+		break;
+	case OF_RECONFIG_ADD_PROPERTY:
+		rte->action = OF_RECONFIG_REMOVE_PROPERTY;
+		break;
+	case OF_RECONFIG_REMOVE_PROPERTY:
+		rte->action = OF_RECONFIG_ADD_PROPERTY;
+		break;
+	case OF_RECONFIG_UPDATE_PROPERTY:
+		rte->old_prop = te->prop;
+		rte->prop = te->old_prop;
+		break;
+	}
+}
+
 static int __of_transaction_entry_notify(struct of_transaction_entry *te, bool revert)
 {
-	int a, ret = -EINVAL;
+	struct of_transaction_entry te_inverted;
+	int ret = -EINVAL;
+
+	if (revert) {
+		__of_transaction_entry_invert(te, &te_inverted);
+		te = &te_inverted;
+	}
 
 	switch (te->action) {
 	case OF_RECONFIG_ATTACH_NODE:
-		a = revert ? OF_RECONFIG_DETACH_NODE : OF_RECONFIG_ATTACH_NODE;
-		ret = of_reconfig_notify(a, te->np);
-		break;
 	case OF_RECONFIG_DETACH_NODE:
-		a = revert ? OF_RECONFIG_ATTACH_NODE : OF_RECONFIG_DETACH_NODE;
-		ret = of_reconfig_notify(a, te->np);
+		ret = of_reconfig_notify(te->action, te->np);
 		break;
 	case OF_RECONFIG_ADD_PROPERTY:
-		a = revert ? OF_RECONFIG_REMOVE_PROPERTY : OF_RECONFIG_ADD_PROPERTY;
-		ret = of_property_notify(a, te->np, te->prop);
-		break;
 	case OF_RECONFIG_REMOVE_PROPERTY:
-		a = revert ? OF_RECONFIG_ADD_PROPERTY : OF_RECONFIG_REMOVE_PROPERTY;
-		ret = of_property_notify(a, te->np, te->prop);
-		break;
 	case OF_RECONFIG_UPDATE_PROPERTY:
-		if (revert)
-			ret = of_property_notify(te->action, te->np, te->old_prop);
-		else
-			ret = of_property_notify(te->action, te->np, te->prop);
+		ret = of_property_notify(te->action, te->np, te->prop);
 		break;
 	}
 
