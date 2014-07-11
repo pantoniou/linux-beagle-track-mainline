@@ -824,8 +824,6 @@ struct of_transaction {
 #ifdef CONFIG_OF_DYNAMIC
 extern void of_transaction_init(struct of_transaction *oft);
 extern void of_transaction_destroy(struct of_transaction *oft);
-extern void of_transaction_start(struct of_transaction *oft);
-extern void of_transaction_abort(struct of_transaction *oft);
 extern int of_transaction_apply(struct of_transaction *oft);
 extern int of_transaction_revert(struct of_transaction *oft);
 extern int of_transaction_action(struct of_transaction *oft,

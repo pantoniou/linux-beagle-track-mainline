@@ -292,39 +292,6 @@ void of_transaction_destroy(struct of_transaction *oft)
 }
 
 /**
- * of_transaction_start - Start a transaction
- *
- * @oft:	transaction pointer
- *
- * Starts a transaction, by simply grabbing hold of the of_mutex.
- * This prevents any modification of the live tree while the
- * transaction is in process.
- */
-void of_transaction_start(struct of_transaction *oft)
-{
-	/* take the global of transaction mutex */
-	mutex_lock(&of_mutex);
-}
-
-/**
- * of_transaction_abort - Aborts a transaction in progress
- *
- * @oft:	transaction pointer
- *
- * Aborts a transaction, this simply releases the of_mutex
- * and destroys all the pending transaction entries.
- */
-void of_transaction_abort(struct of_transaction *oft)
-{
-	struct of_transaction_entry *te, *ten;
-
-	mutex_unlock(&of_mutex);
-
-	list_for_each_entry_safe_reverse(te, ten, &oft->te_list, node)
-		__of_transaction_entry_destroy(te);
-}
-
-/**
  * of_transaction_apply - Applies a transaction
  *
  * @oft:	transaction pointer
@@ -387,7 +354,7 @@ int of_transaction_apply(struct of_transaction *oft)
  */
 int of_transaction_revert(struct of_transaction *oft)
 {
-	struct of_transaction_entry *te, *ten;
+	struct of_transaction_entry *te;
 	int ret;
 
 	/* drop the global lock while emitting notifiers */
