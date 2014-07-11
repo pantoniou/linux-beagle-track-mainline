@@ -64,34 +64,45 @@ static inline void __of_transaction_entry_dump(struct of_transaction_entry *te)
 }
 #endif
 
-static int __of_transaction_entry_apply(struct of_transaction *oft,
-		struct of_transaction_entry *te)
+static int __of_transaction_entry_notify(struct of_transaction_entry *te, bool revert)
 {
-	struct property *old_prop;
-	unsigned long flags;
-	int ret;
-
-	ret = 0;
+	int a, ret = -EINVAL;
 
 	switch (te->action) {
 	case OF_RECONFIG_ATTACH_NODE:
+		a = revert ? OF_RECONFIG_DETACH_NODE : OF_RECONFIG_ATTACH_NODE;
+		ret = of_reconfig_notify(a, te->np);
+		break;
 	case OF_RECONFIG_DETACH_NODE:
-		ret = of_reconfig_notify(te->action, te->np);
+		a = revert ? OF_RECONFIG_ATTACH_NODE : OF_RECONFIG_DETACH_NODE;
+		ret = of_reconfig_notify(a, te->np);
 		break;
 	case OF_RECONFIG_ADD_PROPERTY:
+		a = revert ? OF_RECONFIG_REMOVE_PROPERTY : OF_RECONFIG_ADD_PROPERTY;
+		ret = of_property_notify(a, te->np, te->prop);
+		break;
 	case OF_RECONFIG_REMOVE_PROPERTY:
+		a = revert ? OF_RECONFIG_ADD_PROPERTY : OF_RECONFIG_REMOVE_PROPERTY;
+		ret = of_property_notify(a, te->np, te->prop);
+		break;
 	case OF_RECONFIG_UPDATE_PROPERTY:
-		ret = of_property_notify(te->action, te->np, te->prop);
+		if (revert)
+			ret = of_property_notify(te->action, te->np, te->old_prop);
+		else
+			ret = of_property_notify(te->action, te->np, te->prop);
 		break;
 	}
 
-	if (ret) {
-		pr_err("%s: notifier error @%s\n", __func__,
-				te->np->full_name);
-		return ret;
-	}
+	if (ret)
+		pr_err("%s: notifier error @%s\n", __func__, te->np->full_name);
+	return ret;
+}
 
-	mutex_lock(&of_mutex);
+static int __of_transaction_entry_apply(struct of_transaction_entry *te)
+{
+	struct property *old_prop;
+	unsigned long flags;
+	int ret = -EINVAL;
 
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 	switch (te->action) {
@@ -131,8 +142,6 @@ static int __of_transaction_entry_apply(struct of_transaction *oft,
 	}
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
-	mutex_unlock(&of_mutex);
-
 	if (ret) {
 		/* we can't rollback the notifier */
 		return ret;
@@ -160,50 +169,18 @@ static int __of_transaction_entry_apply(struct of_transaction *oft,
 	return 0;
 }
 
-static int __of_transaction_entry_revert(struct of_transaction *oft,
-		struct of_transaction_entry *te)
+static int __of_transaction_entry_revert(struct of_transaction_entry *te)
 {
 	struct property *prop, *old_prop, **propp;
 	unsigned long action, flags;
 	struct device_node *np;
-	int ret;
+	int ret = -EINVAL;
 
 	/* get node and immediately put */
 	action = te->action;
 	np = te->np;
 	prop = te->prop;
 	old_prop = te->old_prop;
-
-	switch (action) {
-	case OF_RECONFIG_ATTACH_NODE:
-		ret = of_reconfig_notify(OF_RECONFIG_DETACH_NODE, np);
-		break;
-	case OF_RECONFIG_DETACH_NODE:
-		ret = of_reconfig_notify(OF_RECONFIG_ATTACH_NODE, np);
-		break;
-	case OF_RECONFIG_ADD_PROPERTY:
-		ret = of_property_notify(OF_RECONFIG_REMOVE_PROPERTY,
-				np, prop);
-		break;
-	case OF_RECONFIG_REMOVE_PROPERTY:
-		ret = of_property_notify(OF_RECONFIG_ADD_PROPERTY,
-				np, prop);
-		break;
-	case OF_RECONFIG_UPDATE_PROPERTY:
-		ret = of_property_notify(OF_RECONFIG_UPDATE_PROPERTY,
-				np, old_prop);
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	if (ret) {
-		pr_err("%s: notifier error @%s\n", __func__,
-				te->np->full_name);
-		return ret;
-	}
-
-	mutex_lock(&of_mutex);
 
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 	switch (action) {
@@ -262,7 +239,7 @@ static int __of_transaction_entry_revert(struct of_transaction *oft,
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
 	if (ret)
-		goto out_unlock;
+		return ret;
 
 	switch (action) {
 	case OF_RECONFIG_ATTACH_NODE:
@@ -282,9 +259,7 @@ static int __of_transaction_entry_revert(struct of_transaction *oft,
 		break;
 	}
 
-out_unlock:
-	mutex_unlock(&of_mutex);
-	return ret;
+	return 0;
 }
 
 /**
@@ -366,21 +341,29 @@ int of_transaction_apply(struct of_transaction *oft)
 	struct of_transaction_entry *te;
 	int ret;
 
-	/* drop the global lock here (notifiers and devices need it) */
+	/* drop the global lock while emitting notifiers */
 	mutex_unlock(&of_mutex);
-
-	ret = 0;
+	list_for_each_entry(te, &oft->te_list, node) {
+		ret = __of_transaction_entry_notify(te, 0);
+		if (ret) {
+			list_for_each_entry_continue_reverse(te, &oft->te_list, node)
+				ret = __of_transaction_entry_notify(te, 1);
+			mutex_lock(&of_mutex);
+			return ret;
+		}
+	}
+	mutex_lock(&of_mutex);
 
 	/* perform the rest of the work */
 	pr_debug("of_transaction: applying...\n");
 	list_for_each_entry(te, &oft->te_list, node) {
 		__of_transaction_entry_dump(te);
-		ret = __of_transaction_entry_apply(oft, te);
+		ret = __of_transaction_entry_apply(te);
 		if (ret) {
 			pr_err("%s: Error applying transaction (%d)\n", __func__, ret);
 			list_for_each_entry_continue_reverse(te, &oft->te_list, node) {
 				__of_transaction_entry_dump(te);
-				__of_transaction_entry_revert(oft, te);
+				__of_transaction_entry_revert(te);
 			}
 			return ret;
 		}
@@ -407,15 +390,28 @@ int of_transaction_revert(struct of_transaction *oft)
 	struct of_transaction_entry *te, *ten;
 	int ret;
 
+	/* drop the global lock while emitting notifiers */
+	mutex_unlock(&of_mutex);
+	list_for_each_entry_reverse(te, &oft->te_list, node) {
+		ret = __of_transaction_entry_notify(te, 1);
+		if (ret) {
+			list_for_each_entry_continue(te, &oft->te_list, node)
+				ret = __of_transaction_entry_notify(te, 0);
+			mutex_lock(&of_mutex);
+			return ret;
+		}
+	}
+	mutex_lock(&of_mutex);
+
 	pr_debug("of_transaction: reverting...\n");
 	list_for_each_entry_reverse(te, &oft->te_list, node) {
 		__of_transaction_entry_dump(te);
-		ret = __of_transaction_entry_revert(oft, te);
+		ret = __of_transaction_entry_revert(te);
 		if (ret) {
 			pr_err("%s: Error reverting transaction (%d)\n", __func__, ret);
 			list_for_each_entry_continue(te, &oft->te_list, node) {
 				__of_transaction_entry_dump(te);
-				__of_transaction_entry_apply(oft, te);
+				__of_transaction_entry_apply(te);
 			}
 			return ret;
 		}
