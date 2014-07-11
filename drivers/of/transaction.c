@@ -21,29 +21,6 @@
 
 #include "of_private.h"
 
-static struct of_transaction_entry *__of_transaction_entry_create(
-		struct of_transaction *oft, unsigned long action,
-		struct device_node *dn, struct property *prop)
-{
-	struct of_transaction_entry *te;
-
-	te = kzalloc(sizeof(*te), GFP_KERNEL);
-	if (te == NULL) {
-		pr_err("%s: Failed to allocate\n", __func__);
-		return ERR_PTR(-ENOMEM);
-	}
-	/* get a reference to the node */
-	te->action = action;
-	te->np = of_node_get(dn);
-	te->prop = prop;
-
-	if (action == OF_RECONFIG_UPDATE_PROPERTY && prop)
-		te->old_prop = of_transaction_find_property(oft, dn,
-				prop->name, NULL);
-
-	return te;
-}
-
 static void __of_transaction_entry_destroy(struct of_transaction_entry *te)
 {
 	of_node_put(te->np);
@@ -484,13 +461,19 @@ int of_transaction_action(struct of_transaction *oft, unsigned long action,
 {
 	struct of_transaction_entry *te;
 
-	/* create the transaction entry */
-	te = __of_transaction_entry_create(oft, action, np, prop);
-	if (IS_ERR(te)) {
-		pr_err("%s: failed to create entry for @%s\n",
-				__func__, np->full_name);
-		return PTR_ERR(te);
+	te = kzalloc(sizeof(*te), GFP_KERNEL);
+	if (!te) {
+		pr_err("%s: Failed to allocate\n", __func__);
+		return -ENOMEM;
 	}
+	/* get a reference to the node */
+	te->action = action;
+	te->np = of_node_get(np);
+	te->prop = prop;
+
+	if (action == OF_RECONFIG_UPDATE_PROPERTY && prop)
+		te->old_prop = of_transaction_find_property(oft, np,
+				prop->name, NULL);
 
 	/* add it to the list */
 	list_add_tail(&te->node, &oft->te_list);
