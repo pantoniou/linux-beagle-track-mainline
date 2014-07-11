@@ -89,14 +89,4 @@ extern void __of_detach_node_sysfs(struct device_node *np);
 #define for_each_transaction_entry_reverse(_oft, _te) \
 	list_for_each_entry_reverse(_te, &(_oft)->te_list, node)
 
-/* special find property method for use by transaction users */
-extern struct property *of_transaction_find_property(
-		struct of_transaction *oft,
-		const struct device_node *np, const char *name, int *lenp);
-extern int of_transaction_device_is_available(struct of_transaction *oft,
-		const struct device_node *np);
-extern struct device_node *of_transaction_get_child_by_name(
-		struct of_transaction *oft, struct device_node *node,
-		const char *name);
-
 #endif /* _LINUX_OF_PRIVATE_H */

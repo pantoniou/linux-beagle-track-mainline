@@ -472,74 +472,9 @@ int of_transaction_action(struct of_transaction *oft, unsigned long action,
 	te->prop = prop;
 
 	if (action == OF_RECONFIG_UPDATE_PROPERTY && prop)
-		te->old_prop = of_transaction_find_property(oft, np,
-				prop->name, NULL);
+		te->old_prop = of_find_property(np, prop->name, NULL);
 
 	/* add it to the list */
 	list_add_tail(&te->node, &oft->te_list);
 	return 0;
-}
-
-/* utility functions for advanced transaction users */
-
-/* find a property in the transaction list while not applied */
-struct property *of_transaction_find_property(struct of_transaction *oft,
-		const struct device_node *np, const char *name, int *lenp)
-{
-	struct of_transaction_entry *te;
-
-	/* possibly exists in the transaction list as
-	 * part of an attachment action
-	 */
-	list_for_each_entry_reverse(te, &oft->te_list, node) {
-
-		if (te->action != OF_RECONFIG_ADD_PROPERTY &&
-		    te->action != OF_RECONFIG_REMOVE_PROPERTY &&
-		    te->action != OF_RECONFIG_UPDATE_PROPERTY)
-			continue;
-
-		/* match of node and name? */
-		if (te->np != np || strcmp(te->prop->name, name))
-			continue;
-
-		pr_debug("%s: found property \"%s\" in transaction list @%s\n",
-			__func__, name, te->np->full_name);
-
-		if (te->action == OF_RECONFIG_ADD_PROPERTY ||
-		    te->action == OF_RECONFIG_UPDATE_PROPERTY)
-			return te->prop;
-		else
-			return NULL;
-	}
-
-	/* now fallback to live tree */
-	return of_find_property(np, name, lenp);
-}
-
-struct device_node *of_transaction_get_child_by_name(
-		struct of_transaction *oft, struct device_node *node,
-		const char *name)
-{
-	struct of_transaction_entry *te;
-
-	/* possibly exists in the transaction list as
-	 * part of an attachment action
-	 */
-	list_for_each_entry_reverse(te, &oft->te_list, node) {
-
-		if (te->action != OF_RECONFIG_ATTACH_NODE &&
-		    te->action != OF_RECONFIG_DETACH_NODE)
-			continue;
-
-		/* look at the parent and if node matches return */
-		if (te->np->parent != node || strcmp(te->np->name, "name"))
-			continue;
-
-		pr_debug("%s: found child \"%s\" in transaction list @%s\n",
-			__func__, name, te->np->full_name);
-		return te->action == OF_RECONFIG_ATTACH_NODE ? te->np : NULL;
-	}
-
-	/* not found in the transaction list? try normal */
-	return of_get_child_by_name(node, name);
 }
