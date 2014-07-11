@@ -516,23 +516,6 @@ struct property *of_transaction_find_property(struct of_transaction *oft,
 	return of_find_property(np, name, lenp);
 }
 
-/* special find property method for use by transaction users */
-int of_transaction_device_is_available(struct of_transaction *oft,
-		const struct device_node *np)
-{
-	struct property *prop;
-
-	if (!np)
-		return 0;
-
-	prop = of_transaction_find_property(oft, np, "status", NULL);
-	if (prop == NULL)
-		return 1;
-
-	return prop->length > 0 &&
-		(!strcmp(prop->value, "okay") || !strcmp(prop->value, "ok"));
-}
-
 struct device_node *of_transaction_get_child_by_name(
 		struct of_transaction *oft, struct device_node *node,
 		const char *name)
