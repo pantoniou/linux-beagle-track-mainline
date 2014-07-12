@@ -121,6 +121,8 @@ static int __of_transaction_entry_apply(struct of_transaction_entry *te)
 	unsigned long flags;
 	int ret = -EINVAL;
 
+	__of_transaction_entry_dump(te);
+
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 	switch (te->action) {
 	case OF_RECONFIG_ATTACH_NODE:
@@ -273,14 +275,11 @@ int of_transaction_apply(struct of_transaction *oft)
 	/* perform the rest of the work */
 	pr_debug("of_transaction: applying...\n");
 	list_for_each_entry(te, &oft->te_list, node) {
-		__of_transaction_entry_dump(te);
 		ret = __of_transaction_entry_apply(te);
 		if (ret) {
 			pr_err("%s: Error applying transaction (%d)\n", __func__, ret);
-			list_for_each_entry_continue_reverse(te, &oft->te_list, node) {
-				__of_transaction_entry_dump(te);
+			list_for_each_entry_continue_reverse(te, &oft->te_list, node)
 				__of_transaction_entry_revert(te);
-			}
 			return ret;
 		}
 	}
@@ -321,14 +320,11 @@ int of_transaction_revert(struct of_transaction *oft)
 
 	pr_debug("of_transaction: reverting...\n");
 	list_for_each_entry_reverse(te, &oft->te_list, node) {
-		__of_transaction_entry_dump(te);
 		ret = __of_transaction_entry_revert(te);
 		if (ret) {
 			pr_err("%s: Error reverting transaction (%d)\n", __func__, ret);
-			list_for_each_entry_continue(te, &oft->te_list, node) {
-				__of_transaction_entry_dump(te);
+			list_for_each_entry_continue(te, &oft->te_list, node)
 				__of_transaction_entry_apply(te);
-			}
 			return ret;
 		}
 	}
