@@ -1,5 +1,5 @@
 /*
- * Functions for DT transactions
+ * Functions for DT changesets
  *
  * Copyright (C) 2014 Pantelis Antoniou <pantelis.antoniou@konsulko.com>
  *
@@ -21,7 +21,7 @@
 
 #include "of_private.h"
 
-static void __of_transaction_entry_destroy(struct of_transaction_entry *te)
+static void __of_changeset_entry_destroy(struct of_changeset_entry *te)
 {
 	of_node_put(te->np);
 	list_del(&te->node);
@@ -29,7 +29,7 @@ static void __of_transaction_entry_destroy(struct of_transaction_entry *te)
 }
 
 #ifdef DEBUG
-static void __of_transaction_entry_dump(struct of_transaction_entry *te)
+static void __of_changeset_entry_dump(struct of_changeset_entry *te)
 {
 	switch (te->action) {
 	case OF_RECONFIG_ADD_PROPERTY:
@@ -58,14 +58,14 @@ static void __of_transaction_entry_dump(struct of_transaction_entry *te)
 	}
 }
 #else
-static inline void __of_transaction_entry_dump(struct of_transaction_entry *te)
+static inline void __of_changeset_entry_dump(struct of_changeset_entry *te)
 {
 	/* empty */
 }
 #endif
 
-static void __of_transaction_entry_invert(struct of_transaction_entry *te,
-					  struct of_transaction_entry *rte)
+static void __of_changeset_entry_invert(struct of_changeset_entry *te,
+					  struct of_changeset_entry *rte)
 {
 	*rte = *te;
 	switch (te->action) {
@@ -88,13 +88,13 @@ static void __of_transaction_entry_invert(struct of_transaction_entry *te,
 	}
 }
 
-static int __of_transaction_entry_notify(struct of_transaction_entry *te, bool revert)
+static int __of_changeset_entry_notify(struct of_changeset_entry *te, bool revert)
 {
-	struct of_transaction_entry te_inverted;
+	struct of_changeset_entry te_inverted;
 	int ret = -EINVAL;
 
 	if (revert) {
-		__of_transaction_entry_invert(te, &te_inverted);
+		__of_changeset_entry_invert(te, &te_inverted);
 		te = &te_inverted;
 	}
 
@@ -115,13 +115,13 @@ static int __of_transaction_entry_notify(struct of_transaction_entry *te, bool r
 	return ret;
 }
 
-static int __of_transaction_entry_apply(struct of_transaction_entry *te)
+static int __of_changeset_entry_apply(struct of_changeset_entry *te)
 {
 	struct property *old_prop, **propp;
 	unsigned long flags;
 	int ret = -EINVAL;
 
-	__of_transaction_entry_dump(te);
+	__of_changeset_entry_dump(te);
 
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 	switch (te->action) {
@@ -205,67 +205,67 @@ static int __of_transaction_entry_apply(struct of_transaction_entry *te)
 	return 0;
 }
 
-static inline int __of_transaction_entry_revert(struct of_transaction_entry *te)
+static inline int __of_changeset_entry_revert(struct of_changeset_entry *te)
 {
-	struct of_transaction_entry te_inverted;
+	struct of_changeset_entry te_inverted;
 
-	__of_transaction_entry_invert(te, &te_inverted);
-	return __of_transaction_entry_apply(&te_inverted);
+	__of_changeset_entry_invert(te, &te_inverted);
+	return __of_changeset_entry_apply(&te_inverted);
 }
 
 /**
- * of_transaction_init - Initialize a transaction for use
+ * of_changeset_init - Initialize a changeset for use
  *
- * @oft:	transaction pointer
+ * @oft:	changeset pointer
  *
- * Initialize a transaction structure
+ * Initialize a changeset structure
  */
-void of_transaction_init(struct of_transaction *oft)
+void of_changeset_init(struct of_changeset *oft)
 {
 	memset(oft, 0, sizeof(*oft));
 	INIT_LIST_HEAD(&oft->te_list);
 }
 
 /**
- * of_transaction_destroy - Destroy a transaction
+ * of_changeset_destroy - Destroy a changeset
  *
- * @oft:	transaction pointer
+ * @oft:	changeset pointer
  *
- * Destroys a transaction. Note that if a transaction is applied,
+ * Destroys a changeset. Note that if a changeset is applied,
  * its changes to the tree cannot be reverted.
  */
-void of_transaction_destroy(struct of_transaction *oft)
+void of_changeset_destroy(struct of_changeset *oft)
 {
-	struct of_transaction_entry *te, *ten;
+	struct of_changeset_entry *te, *ten;
 
 	list_for_each_entry_safe_reverse(te, ten, &oft->te_list, node)
-		__of_transaction_entry_destroy(te);
+		__of_changeset_entry_destroy(te);
 }
 
 /**
- * of_transaction_apply - Applies a transaction
+ * of_changeset_apply - Applies a changeset
  *
- * @oft:	transaction pointer
+ * @oft:	changeset pointer
  *
- * Applies a transaction to the live tree.
+ * Applies a changeset to the live tree.
  * Any side-effects of live tree state changes are applied here on
  * sucess, like creation/destruction of devices and side-effects
  * like creation of sysfs properties and directories.
  * Returns 0 on success, a negative error value in case of an error.
  * On error the partially applied effects are reverted.
  */
-int of_transaction_apply(struct of_transaction *oft)
+int of_changeset_apply(struct of_changeset *oft)
 {
-	struct of_transaction_entry *te;
+	struct of_changeset_entry *te;
 	int ret;
 
 	/* drop the global lock while emitting notifiers */
 	mutex_unlock(&of_mutex);
 	list_for_each_entry(te, &oft->te_list, node) {
-		ret = __of_transaction_entry_notify(te, 0);
+		ret = __of_changeset_entry_notify(te, 0);
 		if (ret) {
 			list_for_each_entry_continue_reverse(te, &oft->te_list, node)
-				ret = __of_transaction_entry_notify(te, 1);
+				ret = __of_changeset_entry_notify(te, 1);
 			mutex_lock(&of_mutex);
 			return ret;
 		}
@@ -273,58 +273,58 @@ int of_transaction_apply(struct of_transaction *oft)
 	mutex_lock(&of_mutex);
 
 	/* perform the rest of the work */
-	pr_debug("of_transaction: applying...\n");
+	pr_debug("of_changeset: applying...\n");
 	list_for_each_entry(te, &oft->te_list, node) {
-		ret = __of_transaction_entry_apply(te);
+		ret = __of_changeset_entry_apply(te);
 		if (ret) {
-			pr_err("%s: Error applying transaction (%d)\n", __func__, ret);
+			pr_err("%s: Error applying changeset (%d)\n", __func__, ret);
 			list_for_each_entry_continue_reverse(te, &oft->te_list, node)
-				__of_transaction_entry_revert(te);
+				__of_changeset_entry_revert(te);
 			return ret;
 		}
 	}
 
-	pr_debug("of_transaction: applied.\n");
+	pr_debug("of_changeset: applied.\n");
 
 	return 0;
 }
 
 /**
- * of_transaction_revert - Reverts an applied transaction
+ * of_changeset_revert - Reverts an applied changeset
  *
- * @oft:	transaction pointer
+ * @oft:	changeset pointer
  *
- * Reverts a transaction returning the state of the tree to what it
+ * Reverts a changeset returning the state of the tree to what it
  * was before the application.
  * Any side-effects like creation/destruction of devices and
  * removal of sysfs properties and directories are applied.
  * Returns 0 on success, a negative error value in case of an error.
  */
-int of_transaction_revert(struct of_transaction *oft)
+int of_changeset_revert(struct of_changeset *oft)
 {
-	struct of_transaction_entry *te;
+	struct of_changeset_entry *te;
 	int ret;
 
 	/* drop the global lock while emitting notifiers */
 	mutex_unlock(&of_mutex);
 	list_for_each_entry_reverse(te, &oft->te_list, node) {
-		ret = __of_transaction_entry_notify(te, 1);
+		ret = __of_changeset_entry_notify(te, 1);
 		if (ret) {
 			list_for_each_entry_continue(te, &oft->te_list, node)
-				ret = __of_transaction_entry_notify(te, 0);
+				ret = __of_changeset_entry_notify(te, 0);
 			mutex_lock(&of_mutex);
 			return ret;
 		}
 	}
 	mutex_lock(&of_mutex);
 
-	pr_debug("of_transaction: reverting...\n");
+	pr_debug("of_changeset: reverting...\n");
 	list_for_each_entry_reverse(te, &oft->te_list, node) {
-		ret = __of_transaction_entry_revert(te);
+		ret = __of_changeset_entry_revert(te);
 		if (ret) {
-			pr_err("%s: Error reverting transaction (%d)\n", __func__, ret);
+			pr_err("%s: Error reverting changeset (%d)\n", __func__, ret);
 			list_for_each_entry_continue(te, &oft->te_list, node)
-				__of_transaction_entry_apply(te);
+				__of_changeset_entry_apply(te);
 			return ret;
 		}
 	}
@@ -332,9 +332,9 @@ int of_transaction_revert(struct of_transaction *oft)
 }
 
 /**
- * of_transaction_action - Perform a transaction action
+ * of_changeset_action - Perform a changeset action
  *
- * @oft:	transaction pointer
+ * @oft:	changeset pointer
  * @action:	action to perform
  * @np:		Pointer to device node
  * @prop:	Pointer to property
@@ -347,10 +347,10 @@ int of_transaction_revert(struct of_transaction *oft)
  * + OF_RECONFIG_UPDATE_PROPERTY
  * Returns 0 on success, a negative error value in case of an error.
  */
-int of_transaction_action(struct of_transaction *oft, unsigned long action,
+int of_changeset_action(struct of_changeset *oft, unsigned long action,
 		struct device_node *np, struct property *prop)
 {
-	struct of_transaction_entry *te;
+	struct of_changeset_entry *te;
 
 	te = kzalloc(sizeof(*te), GFP_KERNEL);
 	if (!te) {

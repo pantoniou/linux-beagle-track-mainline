@@ -1,0 +1,41 @@
+A DT changeset is a method which allows one to apply changes
+in the live tree, in such a way that either the full set of changes
+take effect, or the state of the tree can be rolled-back to the
+state it was before it was attempted. An applied changeset
+can be rolled-back at any time.
+
+If any changeset results in the change of a state of a device
+node, a notifier for that node will be fired which allows a bus
+to create/destroy devices as directed.
+
+The sequence of a changeset is as follows.
+
+1. of_changeset_init() - initializes a changeset
+
+2. of_changeset_start() - starts a changeset; a global
+changeset lock is taken at this point and disallowes any other
+dynamic tree changes.
+
+3. A number of DT tree change calls, of_changeset_attach_node(),
+of_changeset_detach_node(), of_changeset_add_property(),
+of_changeset_remove_property, of_changeset_update_property()
+modify the live tree (but without any user-space visible changes).
+All changes are recorded in the list of of_changeset_entry of
+the changeset.
+
+4.a. No errors occured during application, so a call to
+of_changeset_commit() is issued. All the changes are made visible
+to user-space and all device creation/destruction notifiers are
+fired. The global changeset is released.
+
+4.b. An error occured, so a of_changeset_abort() call is issued.
+All changes to the live tree will be reverted. The global changeset
+lock will be released.
+
+5.a If the changeset needs not be reverted, a call to
+of_changeset_destroy will release the resources of the changeset.
+
+5.b If the changeset is to be reverted, a call to
+of_changeset_revert will do so. All device notifiers will be
+fired, and the state of the tree will be the same as before
+the call to of_start_changeset().
