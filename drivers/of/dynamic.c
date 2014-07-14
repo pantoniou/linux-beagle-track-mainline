@@ -412,7 +412,7 @@ static int __of_changeset_entry_apply(struct of_changeset_entry *te)
 {
 	struct property *old_prop, **propp;
 	unsigned long flags;
-	int ret = -EINVAL;
+	int ret = 0;
 
 	__of_changeset_entry_dump(te);
 
@@ -470,6 +470,8 @@ static int __of_changeset_entry_apply(struct of_changeset_entry *te)
 			break;
 		}
 		break;
+	default:
+		ret = -EINVAL;
 	}
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
