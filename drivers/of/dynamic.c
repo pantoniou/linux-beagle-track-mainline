@@ -90,10 +90,6 @@ int of_property_notify(int action, struct device_node *np,
 {
 	struct of_prop_reconfig pr;
 
-	/* only call notifiers if the node is attached */
-	if (!of_node_is_attached(np))
-		return 0;
-
 	pr.dn = np;
 	pr.prop = prop;
 	pr.old_prop = oldprop;
@@ -138,6 +134,7 @@ int of_attach_node(struct device_node *np)
 	__of_attach_node_sysfs(np);
 	mutex_unlock(&of_mutex);
 
+	/* node is guaranteed to be attached at this point */
 	of_reconfig_notify(OF_RECONFIG_ATTACH_NODE, np);
 
 	return 0;
