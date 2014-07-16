@@ -328,6 +328,7 @@ struct of_prop_reconfig {
 extern int of_reconfig_notifier_register(struct notifier_block *);
 extern int of_reconfig_notifier_unregister(struct notifier_block *);
 extern int of_reconfig_notify(unsigned long, void *);
+extern int of_reconfig_get_state_change(unsigned long action, void *arg);
 
 extern int of_attach_node(struct device_node *);
 extern int of_detach_node(struct device_node *);
