@@ -338,6 +338,8 @@ static void __init of_selftest_changeset(void)
 	mutex_lock(&of_mutex);
 	selftest(!of_changeset_revert(&chgset), "revert failed\n");
 	mutex_unlock(&of_mutex);
+
+	of_changeset_destroy(&chgset);
 #endif
 }
 
