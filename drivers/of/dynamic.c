@@ -560,19 +560,6 @@ int of_changeset_apply(struct of_changeset *oft)
 	struct of_changeset_entry *te;
 	int ret;
 
-	/* drop the global lock while emitting notifiers */
-	mutex_unlock(&of_mutex);
-	list_for_each_entry(te, &oft->te_list, node) {
-		ret = __of_changeset_entry_notify(te, 0);
-		if (ret) {
-			list_for_each_entry_continue_reverse(te, &oft->te_list, node)
-				ret = __of_changeset_entry_notify(te, 1);
-			mutex_lock(&of_mutex);
-			return ret;
-		}
-	}
-	mutex_lock(&of_mutex);
-
 	/* perform the rest of the work */
 	pr_debug("of_changeset: applying...\n");
 	list_for_each_entry(te, &oft->te_list, node) {
@@ -586,6 +573,27 @@ int of_changeset_apply(struct of_changeset *oft)
 	}
 
 	pr_debug("of_changeset: applied.\n");
+
+	/* drop the global lock while emitting notifiers */
+	mutex_unlock(&of_mutex);
+
+	pr_debug("of_changeset: firing notifiers...\n");
+	list_for_each_entry(te, &oft->te_list, node) {
+		__of_changeset_entry_dump(te);
+		ret = __of_changeset_entry_notify(te, 0);
+		if (ret < 0) {
+			list_for_each_entry_continue_reverse(te, &oft->te_list, node)
+				(void)__of_changeset_entry_notify(te, 1);
+
+			mutex_lock(&of_mutex);
+			list_for_each_entry_reverse(te, &oft->te_list, node)
+				__of_changeset_entry_revert(te);
+			mutex_unlock(&of_mutex);
+
+			return ret;
+		}
+	}
+	pr_debug("of_changeset: done\n");
 
 	return 0;
 }
