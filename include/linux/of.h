@@ -321,6 +321,8 @@ extern int of_update_property(struct device_node *np, struct property *newprop);
 struct of_prop_reconfig {
 	struct device_node	*dn;
 	struct property		*prop;
+	/* for update property */
+	struct property		*old_prop;
 };
 
 extern int of_reconfig_notifier_register(struct notifier_block *);
@@ -828,36 +830,42 @@ extern int of_changeset_apply(struct of_changeset *oft);
 extern int of_changeset_revert(struct of_changeset *oft);
 extern int of_changeset_action(struct of_changeset *oft,
 		unsigned long action, struct device_node *np,
-		struct property *prop);
+		struct property *prop, struct property *old_prop);
 
 static inline int of_changeset_attach_node(struct of_changeset *oft,
 		struct device_node *np)
 {
-	return of_changeset_action(oft, OF_RECONFIG_ATTACH_NODE, np, NULL);
+	return of_changeset_action(oft, OF_RECONFIG_ATTACH_NODE, np, NULL,
+			NULL);
 }
 
 static inline int of_changeset_detach_node(struct of_changeset *oft,
 		struct device_node *np)
 {
-	return of_changeset_action(oft, OF_RECONFIG_DETACH_NODE, np, NULL);
+	return of_changeset_action(oft, OF_RECONFIG_DETACH_NODE, np, NULL,
+			NULL);
 }
 
 static inline int of_changeset_add_property(struct of_changeset *oft,
 		struct device_node *np, struct property *prop)
 {
-	return of_changeset_action(oft, OF_RECONFIG_ADD_PROPERTY, np, prop);
+	return of_changeset_action(oft, OF_RECONFIG_ADD_PROPERTY, np, prop,
+			NULL);
 }
 
 static inline int of_changeset_remove_property(struct of_changeset *oft,
 		struct device_node *np, struct property *prop)
 {
-	return of_changeset_action(oft, OF_RECONFIG_REMOVE_PROPERTY, np, prop);
+	return of_changeset_action(oft, OF_RECONFIG_REMOVE_PROPERTY, np, prop,
+			NULL);
 }
 
 static inline int of_changeset_update_property(struct of_changeset *oft,
-		struct device_node *np, struct property *prop)
+		struct device_node *np, struct property *prop,
+		struct property *old_prop)
 {
-	return of_changeset_action(oft, OF_RECONFIG_UPDATE_PROPERTY, np, prop);
+	return of_changeset_action(oft, OF_RECONFIG_UPDATE_PROPERTY, np, prop,
+			old_prop);
 }
 #endif
 

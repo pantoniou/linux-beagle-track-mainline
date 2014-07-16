@@ -1674,9 +1674,12 @@ int of_add_property(struct device_node *np, struct property *prop)
 	unsigned long flags;
 	int rc;
 
-	rc = of_property_notify(OF_RECONFIG_ADD_PROPERTY, np, prop);
-	if (rc)
-		return rc;
+	/* only call notifiers if the node is attached */
+	if (of_node_is_attached(np)) {
+		rc = of_property_notify(OF_RECONFIG_ADD_PROPERTY, np, prop, NULL);
+		if (rc)
+			return rc;
+	}
 
 	mutex_lock(&of_mutex);
 
@@ -1731,9 +1734,11 @@ int of_remove_property(struct device_node *np, struct property *prop)
 	unsigned long flags;
 	int rc;
 
-	rc = of_property_notify(OF_RECONFIG_REMOVE_PROPERTY, np, prop);
-	if (rc)
-		return rc;
+	if (of_node_is_attached(np)) {
+		rc = of_property_notify(OF_RECONFIG_REMOVE_PROPERTY, np, prop, NULL);
+		if (rc)
+			return rc;
+	}
 
 	mutex_lock(&of_mutex);
 
@@ -1805,9 +1810,12 @@ int of_update_property(struct device_node *np, struct property *newprop)
 	if (!newprop->name)
 		return -EINVAL;
 
-	rc = of_property_notify(OF_RECONFIG_UPDATE_PROPERTY, np, newprop);
-	if (rc)
-		return rc;
+	if (of_node_is_attached(np)) {
+		rc = of_property_notify(OF_RECONFIG_UPDATE_PROPERTY, np, newprop,
+				of_find_property(np, newprop->name, NULL));
+		if (rc)
+			return rc;
+	}
 
 	mutex_lock(&of_mutex);
 

@@ -83,16 +83,13 @@ int of_reconfig_notify(unsigned long action, void *p)
 }
 
 int of_property_notify(int action, struct device_node *np,
-		       struct property *prop)
+		       struct property *prop, struct property *old_prop)
 {
 	struct of_prop_reconfig pr;
 
-	/* only call notifiers if the node is attached */
-	if (!of_node_is_attached(np))
-		return 0;
-
 	pr.dn = np;
 	pr.prop = prop;
+	pr.old_prop = old_prop;
 	return of_reconfig_notify(action, &pr);
 }
 
@@ -127,9 +124,11 @@ int of_attach_node(struct device_node *np)
 	unsigned long flags;
 	int rc;
 
-	rc = of_reconfig_notify(OF_RECONFIG_ATTACH_NODE, np);
-	if (rc)
-		return rc;
+	if (of_node_is_attached(np)) {
+		rc = of_reconfig_notify(OF_RECONFIG_ATTACH_NODE, np);
+		if (rc)
+			return rc;
+	}
 
 	mutex_lock(&of_mutex);
 	raw_spin_lock_irqsave(&devtree_lock, flags);
@@ -188,9 +187,11 @@ int of_detach_node(struct device_node *np)
 	unsigned long flags;
 	int rc = 0;
 
-	rc = of_reconfig_notify(OF_RECONFIG_DETACH_NODE, np);
-	if (rc)
-		return rc;
+	if (of_node_is_attached(np)) {
+		rc = of_reconfig_notify(OF_RECONFIG_DETACH_NODE, np);
+		if (rc)
+			return rc;
+	}
 
 	mutex_lock(&of_mutex);
 	raw_spin_lock_irqsave(&devtree_lock, flags);
@@ -403,7 +404,8 @@ static int __of_changeset_entry_notify(struct of_changeset_entry *te, bool rever
 	case OF_RECONFIG_ADD_PROPERTY:
 	case OF_RECONFIG_REMOVE_PROPERTY:
 	case OF_RECONFIG_UPDATE_PROPERTY:
-		ret = of_property_notify(te->action, te->np, te->prop);
+		ret = of_property_notify(te->action, te->np, te->prop,
+				te->old_prop);
 		break;
 	}
 
@@ -608,7 +610,7 @@ int of_changeset_revert(struct of_changeset *oft)
 	mutex_unlock(&of_mutex);
 	list_for_each_entry_reverse(te, &oft->te_list, node) {
 		ret = __of_changeset_entry_notify(te, 1);
-		if (ret) {
+		if (ret < 0) {
 			list_for_each_entry_continue(te, &oft->te_list, node)
 				ret = __of_changeset_entry_notify(te, 0);
 			mutex_lock(&of_mutex);
@@ -637,6 +639,7 @@ int of_changeset_revert(struct of_changeset *oft)
  * @action:	action to perform
  * @np:		Pointer to device node
  * @prop:	Pointer to property
+ * @old_prop:	Pointer to old property (if updating)
  *
  * On action being one of:
  * + OF_RECONFIG_ATTACH_NODE
@@ -647,9 +650,20 @@ int of_changeset_revert(struct of_changeset *oft)
  * Returns 0 on success, a negative error value in case of an error.
  */
 int of_changeset_action(struct of_changeset *oft, unsigned long action,
-		struct device_node *np, struct property *prop)
+		struct device_node *np, struct property *prop,
+		struct property *old_prop)
 {
 	struct of_changeset_entry *te;
+
+	/* in case someone passed NULL as old_prop, find it */
+	if (action == OF_RECONFIG_UPDATE_PROPERTY && prop && !old_prop) {
+		old_prop = of_find_property(np, prop->name, NULL);
+		if (!old_prop) {
+			pr_err("%s: Failed to find old_prop for \"%s/%s\"\n",
+					__func__, np->full_name, prop->name);
+			return -EINVAL;
+		}
+	}
 
 	te = kzalloc(sizeof(*te), GFP_KERNEL);
 	if (!te) {
@@ -660,9 +674,7 @@ int of_changeset_action(struct of_changeset *oft, unsigned long action,
 	te->action = action;
 	te->np = of_node_get(np);
 	te->prop = prop;
-
-	if (action == OF_RECONFIG_UPDATE_PROPERTY && prop)
-		te->old_prop = of_find_property(np, prop->name, NULL);
+	te->old_prop = old_prop;
 
 	/* add it to the list */
 	list_add_tail(&te->node, &oft->te_list);
