@@ -1685,7 +1685,8 @@ int of_add_property(struct device_node *np, struct property *prop)
 
 	mutex_unlock(&of_mutex);
 
-	if (!rc)
+	/* only call notifiers if the node is attached and no error occurred */
+	if (of_node_is_attached(np) && !rc)
 		of_property_notify(OF_RECONFIG_ADD_PROPERTY, np, prop, NULL);
 
 	return rc;
@@ -1741,7 +1742,8 @@ int of_remove_property(struct device_node *np, struct property *prop)
 
 	mutex_unlock(&of_mutex);
 
-	if (!rc)
+	/* only call notifiers if the node is attached and no error occurred */
+	if (of_node_is_attached(np) && !rc)
 		of_property_notify(OF_RECONFIG_REMOVE_PROPERTY, np, prop, NULL);
 
 	return rc;
@@ -1814,7 +1816,8 @@ int of_update_property(struct device_node *np, struct property *newprop)
 
 	mutex_unlock(&of_mutex);
 
-	if (!rc)
+	/* only call notifiers if the node is attached and no error occurred */
+	if (of_node_is_attached(np) && !rc)
 		of_property_notify(OF_RECONFIG_UPDATE_PROPERTY, np, newprop, oldprop);
 
 	return rc;

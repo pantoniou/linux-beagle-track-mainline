@@ -87,10 +87,6 @@ int of_property_notify(int action, struct device_node *np,
 {
 	struct of_prop_reconfig pr;
 
-	/* only call notifiers if the node is attached */
-	if (!of_node_is_attached(np))
-		return 0;
-
 	pr.dn = np;
 	pr.prop = prop;
 	pr.old_prop = oldprop;
@@ -135,6 +131,7 @@ int of_attach_node(struct device_node *np)
 	__of_attach_node_sysfs(np);
 	mutex_unlock(&of_mutex);
 
+	/* node is guaranteed to be attached at this point */
 	of_reconfig_notify(OF_RECONFIG_ATTACH_NODE, np);
 
 	return 0;
@@ -573,10 +570,12 @@ int of_changeset_apply(struct of_changeset *ocs)
 	mutex_unlock(&of_mutex);
 	list_for_each_entry(ce, &ocs->entries, node) {
 		ret = __of_changeset_entry_notify(ce, 0);
-		if (ret) {
+		if (ret < 0) {
 			list_for_each_entry_continue_reverse(ce, &ocs->entries, node)
 				__of_changeset_entry_notify(ce, 1);
 			mutex_lock(&of_mutex);
+			list_for_each_entry_reverse(ce, &ocs->entries, node)
+				__of_changeset_entry_revert(ce);
 			return ret;
 		}
 	}
@@ -638,6 +637,7 @@ int of_changeset_revert(struct of_changeset *ocs)
  * @action:	action to perform
  * @np:		Pointer to device node
  * @prop:	Pointer to property
+ * @old_prop:	Pointer to old property (if updating)
  *
  * On action being one of:
  * + OF_RECONFIG_ATTACH_NODE
@@ -648,9 +648,20 @@ int of_changeset_revert(struct of_changeset *ocs)
  * Returns 0 on success, a negative error value in case of an error.
  */
 int of_changeset_action(struct of_changeset *ocs, unsigned long action,
-		struct device_node *np, struct property *prop)
+		struct device_node *np, struct property *prop,
+		struct property *oldprop)
 {
 	struct of_changeset_entry *ce;
+
+	/* in case someone passed NULL as old_prop, find it */
+	if (action == OF_RECONFIG_UPDATE_PROPERTY && prop && !oldprop) {
+		oldprop = of_find_property(np, prop->name, NULL);
+		if (!oldprop) {
+			pr_err("%s: Failed to find old_prop for \"%s/%s\"\n",
+					__func__, np->full_name, prop->name);
+			return -EINVAL;
+		}
+	}
 
 	ce = kzalloc(sizeof(*ce), GFP_KERNEL);
 	if (!ce) {
@@ -661,9 +672,7 @@ int of_changeset_action(struct of_changeset *ocs, unsigned long action,
 	ce->action = action;
 	ce->np = of_node_get(np);
 	ce->prop = prop;
-
-	if (action == OF_RECONFIG_UPDATE_PROPERTY && prop)
-		ce->old_prop = of_find_property(np, prop->name, NULL);
+	ce->old_prop = oldprop;
 
 	/* add it to the list */
 	list_add_tail(&ce->node, &ocs->entries);
