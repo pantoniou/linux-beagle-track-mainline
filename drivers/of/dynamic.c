@@ -360,7 +360,7 @@ static inline void __of_changeset_entry_dump(struct of_changeset_entry *te)
 static void __of_changeset_entry_invert(struct of_changeset_entry *te,
 					  struct of_changeset_entry *rte)
 {
-	memset(rte, 0, sizeof(*rte));
+	memcpy(rte, te, sizeof(*rte));
 
 	switch (te->action) {
 	case OF_RECONFIG_ATTACH_NODE:
