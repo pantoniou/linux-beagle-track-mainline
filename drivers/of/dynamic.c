@@ -272,10 +272,7 @@ struct property *__of_prop_dup(const struct property *prop, gfp_t allocflags)
 
 /**
  * __of_node_alloc() - Create an empty device node dynamically.
- * @name:	Name of the new device node
- * @type:	Type of the new device node
  * @full_name:	Full name of the new device node
- * @phandle:	Phandle of the new device node
  * @allocflags:	Allocation flags (typically pass GFP_KERNEL)
  *
  * Create an empty device tree node, suitable for further modification.
@@ -283,9 +280,7 @@ struct property *__of_prop_dup(const struct property *prop, gfp_t allocflags)
  * have the OF_DYNAMIC & OF_DETACHED bits set.
  * Returns the newly allocated node or NULL on out of memory error.
  */
-struct device_node *__of_node_alloc(
-		const char *name, const char *type, const char *full_name,
-		phandle phandle, gfp_t allocflags)
+struct device_node *__of_node_alloc(const char *full_name, gfp_t allocflags)
 {
 	struct device_node *node;
 
@@ -293,13 +288,10 @@ struct device_node *__of_node_alloc(
 	if (!node)
 		return NULL;
 
-	node->name = kstrdup(name, allocflags);
-	node->type = kstrdup(type, allocflags);
 	node->full_name = kstrdup(full_name, allocflags);
-	node->phandle = phandle;
 	of_node_set_flag(node, OF_DYNAMIC);
 	of_node_set_flag(node, OF_DETACHED);
-	if (!node->name || !node->type || !node->full_name)
+	if (!node->full_name)
 		goto err_free;
 
 	of_node_init(node);
@@ -307,8 +299,6 @@ struct device_node *__of_node_alloc(
 	return node;
 
  err_free:
-	kfree(node->type);
-	kfree(node->name);
 	kfree(node->full_name);
 	kfree(node);
 	return NULL;

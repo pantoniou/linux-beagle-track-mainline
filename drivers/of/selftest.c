@@ -303,11 +303,11 @@ static void __init of_selftest_changeset(void)
 	struct of_changeset chgset;
 
 	of_changeset_init(&chgset);
-	n1 = __of_node_alloc("n1", "<NULL>", "/testcase-data/changeset/n1", 0x1234, GFP_KERNEL);
+	n1 = __of_node_alloc("/testcase-data/changeset/n1", GFP_KERNEL);
 	selftest(n1, "testcase setup failure\n");
-	n2 = __of_node_alloc("n2", "<NULL>", "/testcase-data/changeset/n2", 0x1235, GFP_KERNEL);
+	n2 = __of_node_alloc("/testcase-data/changeset/n2", GFP_KERNEL);
 	selftest(n2, "testcase setup failure\n");
-	n21 = __of_node_alloc("n21", "<NULL>", "/testcase-data/changeset/n2/n21", 0x1236, GFP_KERNEL);
+	n21 = __of_node_alloc("/testcase-data/changeset/n2/n21", GFP_KERNEL);
 	selftest(n21, "testcase setup failure %p\n", n21);
 	nremove = of_find_node_by_path("/testcase-data/changeset/node-remove");
 	selftest(nremove, "testcase setup failure\n");

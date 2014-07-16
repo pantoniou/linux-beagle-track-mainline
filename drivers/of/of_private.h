@@ -61,8 +61,7 @@ static inline int of_property_notify(int action, struct device_node *np,
  * own the devtree lock or work on detached trees only.
  */
 struct property *__of_prop_dup(const struct property *prop, gfp_t allocflags);
-struct device_node *__of_node_alloc(const char *name, const char *type,
-			const char *full_name, phandle phandle, gfp_t allocflags);
+struct device_node *__of_node_alloc(const char *full_name, gfp_t allocflags);
 
 extern int __of_add_property(struct device_node *np, struct property *prop);
 extern int __of_add_property_sysfs(struct device_node *np,
