@@ -32,7 +32,7 @@ config OF_PROMTREE
 # Hardly any platforms need this.  It is safe to select, but only do so if you
 # need it.
 config OF_DYNAMIC
-	bool
+	bool "Device Tree runtime modifications"
 
 config OF_ADDRESS
 	def_bool y
