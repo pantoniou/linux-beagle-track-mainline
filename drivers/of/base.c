@@ -1655,6 +1655,27 @@ int of_count_phandle_with_args(const struct device_node *np, const char *list_na
 }
 EXPORT_SYMBOL(of_count_phandle_with_args);
 
+/* handle special properties actions */
+static void __of_handle_special_property(struct device_node *np,
+		struct property *prop, unsigned long action)
+{
+	int remove = action == OF_RECONFIG_REMOVE_PROPERTY;
+
+	if (!of_prop_cmp(prop->name, "name")) {
+		/* name properties are non-modifiable */
+		if (action != OF_RECONFIG_ADD_PROPERTY)
+			return;
+		np->name = prop->value;
+	} else if (!of_prop_cmp(prop->name, "device_type"))
+		np->type = !remove ? prop->value : "<NULL>";
+	else if (!of_prop_cmp(prop->name, "phandle") ||
+		!of_prop_cmp(prop->name, "linux,phandle") ||
+		(IS_ENABLED(PPC_PSERIES) &&
+			!of_prop_cmp(prop->name, "ibm,handle")))
+		np->phandle = !remove && prop->length >= 4 ?
+			be32_to_cpup(prop->value) : 0;
+}
+
 /**
  * __of_add_property - Add a property to a node without lock operations
  */
@@ -1673,6 +1694,7 @@ int __of_add_property(struct device_node *np, struct property *prop)
 	}
 	*next = prop;
 
+	__of_handle_special_property(np, prop, OF_RECONFIG_ADD_PROPERTY);
 	return 0;
 }
 
@@ -1717,6 +1739,8 @@ int __of_remove_property(struct device_node *np, struct property *prop)
 	*next = prop->next;
 	prop->next = np->deadprops;
 	np->deadprops = prop;
+
+	__of_handle_special_property(np, prop, OF_RECONFIG_REMOVE_PROPERTY);
 
 	return 0;
 }
@@ -1784,6 +1808,8 @@ int __of_update_property(struct device_node *np, struct property *newprop,
 		newprop->next = NULL;
 		*next = newprop;
 	}
+
+	__of_handle_special_property(np, newprop, OF_RECONFIG_UPDATE_PROPERTY);
 
 	return 0;
 }
