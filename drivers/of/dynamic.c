@@ -627,6 +627,7 @@ int of_changeset_revert(struct of_changeset *ocs)
  * @action:	action to perform
  * @np:		Pointer to device node
  * @prop:	Pointer to property
+ * @old_prop:	Pointer to old property (if updating)
  *
  * On action being one of:
  * + OF_RECONFIG_ATTACH_NODE
@@ -637,9 +638,20 @@ int of_changeset_revert(struct of_changeset *ocs)
  * Returns 0 on success, a negative error value in case of an error.
  */
 int of_changeset_action(struct of_changeset *ocs, unsigned long action,
-		struct device_node *np, struct property *prop)
+		struct device_node *np, struct property *prop,
+		struct property *oldprop)
 {
 	struct of_changeset_entry *ce;
+
+	/* in case someone passed NULL as old_prop, find it */
+	if (action == OF_RECONFIG_UPDATE_PROPERTY && prop && !oldprop) {
+		oldprop = of_find_property(np, prop->name, NULL);
+		if (!oldprop) {
+			pr_err("%s: Failed to find old_prop for \"%s/%s\"\n",
+					__func__, np->full_name, prop->name);
+			return -EINVAL;
+		}
+	}
 
 	ce = kzalloc(sizeof(*ce), GFP_KERNEL);
 	if (!ce) {
@@ -650,9 +662,7 @@ int of_changeset_action(struct of_changeset *ocs, unsigned long action,
 	ce->action = action;
 	ce->np = of_node_get(np);
 	ce->prop = prop;
-
-	if (action == OF_RECONFIG_UPDATE_PROPERTY && prop)
-		ce->old_prop = of_find_property(np, prop->name, NULL);
+	ce->old_prop = oldprop;
 
 	/* add it to the list */
 	list_add_tail(&ce->node, &ocs->entries);
