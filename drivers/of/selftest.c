@@ -428,7 +428,7 @@ static void __init of_selftest_changeset(void)
 	selftest(!of_changeset_detach_node(&chgset, nremove), "fail remove node\n");
 	selftest(!of_changeset_attach_node(&chgset, n21), "fail attach n21\n");
 	selftest(!of_changeset_add_property(&chgset, parent, ppadd), "fail add prop\n");
-	selftest(!of_changeset_update_property(&chgset, parent, ppupdate), "fail update prop\n");
+	selftest(!of_changeset_update_property(&chgset, parent, ppupdate, NULL), "fail update prop\n");
 	selftest(!of_changeset_remove_property(&chgset, parent, ppremove), "fail remove prop\n");
 	mutex_lock(&of_mutex);
 	selftest(!of_changeset_apply(&chgset), "apply failed\n");
