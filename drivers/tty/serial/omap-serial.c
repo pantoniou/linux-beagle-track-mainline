@@ -1634,6 +1634,31 @@ static int serial_omap_probe_rs485(struct uart_omap_port *up,
 	return 0;
 }
 
+static int serial_omap_of_get_port_line(struct device_node *np)
+{
+	unsigned long val;
+	const char *hwmod;
+	int ret;
+
+	/* first try the serial alias */
+	ret = of_alias_get_id(np, "serial");
+	if (ret >= 0)
+		return ret;
+
+	/* no? calculate it from hwmods */
+	ret = of_property_read_string(np, "ti,hwmods", &hwmod);
+	if (ret != 0 || strncmp(hwmod, "uart", 4) ||
+			kstrtoul(hwmod + 4, 10, &val))
+		return -ENODEV;
+
+	/* numbering of hwmods is +1 */
+	ret = (int)val - 1;
+	if (ret < 0)
+		return -ENODEV;
+
+	return ret;
+}
+
 static int serial_omap_probe(struct platform_device *pdev)
 {
 	struct omap_uart_port_info *omap_up_info = dev_get_platdata(&pdev->dev);
@@ -1685,11 +1710,11 @@ static int serial_omap_probe(struct platform_device *pdev)
 	up->port.ops = &serial_omap_pops;
 
 	if (pdev->dev.of_node)
-		up->port.line = of_alias_get_id(pdev->dev.of_node, "serial");
+		up->port.line = serial_omap_of_get_port_line(pdev->dev.of_node);
 	else
 		up->port.line = pdev->id;
 
-	if (up->port.line < 0) {
+	if ((int)up->port.line < 0) {
 		dev_err(&pdev->dev, "failed to get alias/pdev id, errno %d\n",
 								up->port.line);
 		ret = -ENODEV;
