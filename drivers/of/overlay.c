@@ -79,7 +79,7 @@ static int of_overlay_apply_single_property(struct of_overlay *ov,
 		return of_changeset_add_property(&ov->cset, target, propn);
 
 	/* found? update */
-	return of_changeset_update_property(&ov->cset, target, propn, tprop);
+	return of_changeset_update_property(&ov->cset, target, propn);
 }
 
 static int of_overlay_apply_single_device_node(struct of_overlay *ov,
