@@ -105,34 +105,20 @@ static int of_overlay_apply_single_device_node(struct of_overlay *ov,
 	/* NOTE: Multiple mods of created nodes not supported */
 	tchild = of_get_child_by_name(target, cname);
 	if (tchild != NULL) {
-
 		/* apply overlay recursively */
-		ret = of_overlay_apply_one(ov, tchild,
-				child);
-
+		ret = of_overlay_apply_one(ov, tchild, child);
 		of_node_put(tchild);
-
 	} else {
-		full_name = kasprintf(GFP_KERNEL, "%s/%s",
-				target->full_name, cname);
-		if (full_name == NULL)
-			return -ENOMEM;
-
 		/* create empty tree as a target */
-		tchild = __of_node_alloc(full_name, GFP_KERNEL);
-
-		/* free either way */
-		kfree(full_name);
-
-		if (tchild == NULL)
+		tchild = __of_node_alloc("%s/%s", target->full_name, cname);
+		if (!tchild)
 			return -ENOMEM;
 
 		/* point to parent */
 		tchild->parent = target;
 
 		/* apply the overlay */
-		ret = of_overlay_apply_one(ov, tchild,
-				child);
+		ret = of_overlay_apply_one(ov, tchild, child);
 
 		/* attach the node afterwards */
 		if (!ret)
