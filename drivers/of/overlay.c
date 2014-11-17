@@ -86,8 +86,7 @@ static int of_overlay_apply_single_device_node(struct of_overlay *ov,
 		struct device_node *target, struct device_node *child)
 {
 	const char *cname;
-	struct device_node *tchild;
-	char *full_name;
+	struct device_node *tchild, *grandchild;
 	const char *suffix;
 	int ret;
 
@@ -110,20 +109,31 @@ static int of_overlay_apply_single_device_node(struct of_overlay *ov,
 		of_node_put(tchild);
 	} else {
 		/* create empty tree as a target */
-		tchild = __of_node_alloc("%s/%s", target->full_name, cname);
+		tchild = __of_node_dup(child, "%s/%s", target->full_name, cname);
 		if (!tchild)
 			return -ENOMEM;
 
 		/* point to parent */
 		tchild->parent = target;
 
-		/* apply the overlay */
+		ret = of_changeset_attach_node(&ov->cset, tchild);
+		if (ret)
+			return ret;
+
 		ret = of_overlay_apply_one(ov, tchild, child);
+		if (ret)
+			return ret;
 
-		/* attach the node afterwards */
-		if (!ret)
-			ret = of_changeset_attach_node(&ov->cset, tchild);
-
+		/* The properties are already copied, now do the child nodes */
+		for_each_child_of_node(child, grandchild) {
+			ret = of_overlay_apply_single_device_node(ov, tchild, grandchild);
+			if (ret) {
+				pr_err("%s: Failed to apply single node @%s/%s\n",
+						__func__, tchild->full_name,
+						grandchild->name);
+				return ret;
+			}
+		}
 	}
 
 	return ret;
