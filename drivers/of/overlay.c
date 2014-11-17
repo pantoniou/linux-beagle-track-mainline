@@ -150,76 +150,14 @@ static int of_overlay_apply_one(struct of_overlay *ov,
 {
 	struct device_node *child;
 	struct property *prop;
-	int prev_avail, prop_avail, pass;
 	int ret;
 
-	/*
-	 * Special consideration for status properties
-	 *
-	 * In order to make status property changes work
-	 * we have the following cases:
-	 *
-	 * Enabled device with status change to 'disabled'
-	 *   -> Status property must be first on the record list
-	 *
-	 * Disabled device with status change to 'okay'
-	 *   -> Status property must be last in the record list
-	 *
-	 * That way we don't need a special notifier for
-	 * device status change, a simple notifier on the status
-	 * property is enough.
-	 *
-	 */
-
-	/* note that we require the existence of a status property */
-	prev_avail = of_device_is_available(target) &&
-		of_find_property(target,
-				"compatible", NULL) &&
-		of_find_property(target,
-				"status", NULL);
-
-	/* we make two passes */
-	for (pass = 1; pass <= 2; pass++) {
-
-		for_each_property_of_node(overlay, prop) {
-
-			prop_avail = -1;
-
-			if (of_prop_cmp(prop->name, "status") == 0)
-				prop_avail = strcmp(prop->value, "okay") == 0 ||
-						strcmp(prop->value, "ok") == 0;
-
-			/* skip activation property */
-			if (prev_avail == 0) {
-				/* 0 -> 1, pass #1, skip */
-				if (pass == 1) {
-					if (prop_avail == 1)
-						continue;
-				} else {
-					/* 0 -> 1, pass #2, process */
-					if (prop_avail != 1)
-						continue;
-				}
-			} else {
-				if (pass == 1) {
-					/* 1 -> 0, pass #1, process */
-					if (prop_avail != 0)
-						continue;
-				} else {
-					/* 1 -> 0, pass #2, skip */
-					if (prop_avail == 0)
-						continue;
-				}
-			}
-
-			ret = of_overlay_apply_single_property(ov,
-					target, prop);
-			if (ret != 0) {
-				pr_err("%s: Failed to apply prop @%s/%s\n",
-						__func__, target->full_name,
-						prop->name);
-				return ret;
-			}
+	for_each_property_of_node(overlay, prop) {
+		ret = of_overlay_apply_single_property(ov, target, prop);
+		if (ret) {
+			pr_err("%s: Failed to apply prop @%s/%s\n",
+				__func__, target->full_name, prop->name);
+			return ret;
 		}
 	}
 
