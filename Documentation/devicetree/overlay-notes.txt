@@ -116,11 +116,7 @@ The DTS of an overlay should have the following format:
 
 		__overlay__ {
 			property-a;	/* add property-a to the target */
-			-property-b;	/* remove property-b from target */
 			node-a {	/* add to an existing, or create a node-a */
-				...
-			};
-			-node-b {	/* remove an existing node-b */
 				...
 			};
 		};
