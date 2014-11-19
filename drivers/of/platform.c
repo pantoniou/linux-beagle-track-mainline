@@ -585,7 +585,7 @@ static int of_platform_notify(struct notifier_block *nb,
 	if (state) {
 
 		/* verify that the parent is a bus */
-		if (!of_match_node(of_default_bus_match_table, dn->parent))
+		if (!of_node_check_flag(dn->parent, OF_POPULATED_BUS))
 			return NOTIFY_OK;	/* not for us */
 
 		/* pdev_parent may be NULL when no bus platform device */
