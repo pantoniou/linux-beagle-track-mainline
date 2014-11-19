@@ -39,8 +39,8 @@ struct of_overlay_info {
  * struct of_overlay - Holds a complete overlay transaction
  * @node:	List on which we are located
  * @count:	Count of ovinfo structures
- * @ovinfo:	Overlay info array (count size)
- * @le_list:	List of the overlay logs
+ * @ovinfo_tab:	Overlay info table (count sized)
+ * @cset:	Changeset to be used
  *
  * Holds a complete overlay transaction
  */
@@ -143,7 +143,7 @@ static int of_overlay_apply_single_device_node(struct of_overlay *ov,
  *
  * Note that the in case of an error the target node is left
  * in a inconsistent state. Error recovery should be performed
- * by using the tree changes list.
+ * by using the changeset.
  */
 static int of_overlay_apply_one(struct of_overlay *ov,
 		struct device_node *target, const struct device_node *overlay)
