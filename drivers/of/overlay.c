@@ -86,17 +86,11 @@ static int of_overlay_apply_single_device_node(struct of_overlay *ov,
 {
 	const char *cname;
 	struct device_node *tchild, *grandchild;
-	const char *suffix;
 	int ret;
 
-	/* special case for nodes with a suffix */
-	suffix = strrchr(child->full_name, '@');
-	if (suffix != NULL) {
-		cname = kbasename(child->full_name);
-		if (cname == NULL)
-			return -ENOMEM;
-	} else
-		cname = child->name;
+	cname = kbasename(child->full_name);
+	if (cname == NULL)
+		return -ENOMEM;
 
 	ret = 0;
 
