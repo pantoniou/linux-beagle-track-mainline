@@ -340,7 +340,6 @@ static int of_free_overlay_info(struct of_overlay *ov)
 }
 
 static LIST_HEAD(ov_list);
-static DEFINE_MUTEX(ov_lock);
 static DEFINE_IDR(ov_idr);
 
 /**
@@ -365,9 +364,10 @@ int of_overlay_create(struct device_node *tree)
 	ov->id = -1;
 
 	INIT_LIST_HEAD(&ov->node);
-	mutex_lock(&ov_lock);
 
 	of_changeset_init(&ov->cset);
+
+	mutex_lock(&of_mutex);
 
 	id = idr_alloc(&ov_idr, ov, 0, 0, GFP_KERNEL);
 	if (id < 0) {
@@ -386,8 +386,6 @@ int of_overlay_create(struct device_node *tree)
 		goto err_free_idr;
 	}
 
-	mutex_lock(&of_mutex);
-
 	/* apply the overlay */
 	err = of_overlay_apply(ov);
 	if (err) {
@@ -404,25 +402,22 @@ int of_overlay_create(struct device_node *tree)
 		goto err_revert_overlay;
 	}
 
-	mutex_unlock(&of_mutex);
-
 	/* add to the tail of the overlay list */
 	list_add_tail(&ov->node, &ov_list);
 
-	mutex_unlock(&ov_lock);
+	mutex_unlock(&of_mutex);
 
 	return id;
 
 err_revert_overlay:
 err_abort_trans:
 	of_free_overlay_info(ov);
-	mutex_unlock(&of_mutex);
 err_free_idr:
 	idr_remove(&ov_idr, ov->id);
 err_destroy_trans:
 	of_changeset_destroy(&ov->cset);
-	mutex_unlock(&ov_lock);
 	kfree(ov);
+	mutex_unlock(&of_mutex);
 
 	return err;
 }
@@ -511,7 +506,8 @@ int of_overlay_destroy(int id)
 	struct of_overlay *ov;
 	int err;
 
-	mutex_lock(&ov_lock);
+	mutex_lock(&of_mutex);
+
 	ov = idr_find(&ov_idr, id);
 	if (ov == NULL) {
 		err = -ENODEV;
@@ -530,11 +526,7 @@ int of_overlay_destroy(int id)
 
 
 	list_del(&ov->node);
-
-	mutex_lock(&of_mutex);
 	of_changeset_revert(&ov->cset);
-	mutex_unlock(&of_mutex);
-
 	of_free_overlay_info(ov);
 	idr_remove(&ov_idr, id);
 	of_changeset_destroy(&ov->cset);
@@ -543,7 +535,7 @@ int of_overlay_destroy(int id)
 	err = 0;
 
 out:
-	mutex_unlock(&ov_lock);
+	mutex_unlock(&of_mutex);
 
 	return err;
 }
@@ -560,23 +552,18 @@ int of_overlay_destroy_all(void)
 {
 	struct of_overlay *ov, *ovn;
 
-	mutex_lock(&ov_lock);
+	mutex_lock(&of_mutex);
 
 	/* the tail of list is guaranteed to be safe to remove */
 	list_for_each_entry_safe_reverse(ov, ovn, &ov_list, node) {
 		list_del(&ov->node);
-
-		mutex_lock(&of_mutex);
 		of_changeset_revert(&ov->cset);
-		mutex_unlock(&of_mutex);
-
 		of_free_overlay_info(ov);
 		idr_remove(&ov_idr, ov->id);
 		kfree(ov);
 	}
 
-
-	mutex_unlock(&ov_lock);
+	mutex_unlock(&of_mutex);
 
 	return 0;
 }
