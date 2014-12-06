@@ -964,6 +964,31 @@ static void selftest_data_remove(void)
 	}
 }
 
+#ifdef CONFIG_OF_DYNAMIC
+
+static int of_selftest_notify(struct notifier_block *nb,
+				unsigned long action, void *arg)
+{
+	pr_info("%s()\n", __func__);
+	return 0;
+}
+
+static struct notifier_block selftest_of_notifier;
+
+static void __init of_selftest_notifier(void)
+{
+	selftest_of_notifier.notifier_call = of_selftest_notify;
+	selftest(of_reconfig_notifier_register(&selftest_of_notifier) == 0,
+		"Register of reconfig notifier failed\n");
+
+	selftest(of_reconfig_notifier_unregister(&selftest_of_notifier) == 0,
+		"Unregister of reconfig notifier failed\n");
+}
+#else
+static inline void __init of_selftest_notifier(void) { }
+
+#endif
+
 #ifdef CONFIG_OF_OVERLAY
 
 static int selftest_probe(struct platform_device *pdev)
@@ -1519,6 +1544,7 @@ static int __init of_selftest(void)
 	of_selftest_parse_interrupts_extended();
 	of_selftest_match_node();
 	of_selftest_platform_populate();
+	of_selftest_notifier();
 	of_selftest_overlay();
 
 	/* removing selftest data from live tree */
