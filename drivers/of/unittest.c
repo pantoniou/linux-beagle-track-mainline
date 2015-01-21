@@ -1,7 +1,7 @@
 /*
  * Self tests for device tree subsystem
  */
-
+#define DEBUG
 #define pr_fmt(fmt) "### dt-test ### " fmt
 
 #include <linux/clk.h>
@@ -962,7 +962,7 @@ static int selftest_probe(struct platform_device *pdev)
 
 	}
 
-	dev_dbg(dev, "%s for node @%s\n", __func__, np->full_name);
+	dev_dbg(dev, "%s for node %pOfnpcCFr\n", __func__, np);
 
 	of_platform_populate(np, NULL, NULL, &pdev->dev);
 
@@ -974,7 +974,7 @@ static int selftest_remove(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
 
-	dev_dbg(dev, "%s for node @%s\n", __func__, np->full_name);
+	dev_dbg(dev, "%s for node %pO\n", __func__, np);
 	return 0;
 }
 
@@ -1526,7 +1526,7 @@ static int selftest_i2c_bus_probe(struct platform_device *pdev)
 
 	}
 
-	dev_dbg(dev, "%s for node @%s\n", __func__, np->full_name);
+	dev_dbg(dev, "%s for node %pO\n", __func__, np);
 
 	std = devm_kzalloc(dev, sizeof(*std), GFP_KERNEL);
 	if (!std) {
@@ -1564,7 +1564,7 @@ static int selftest_i2c_bus_remove(struct platform_device *pdev)
 	struct device_node *np = dev->of_node;
 	struct selftest_i2c_bus_data *std = platform_get_drvdata(pdev);
 
-	dev_dbg(dev, "%s for node @%s\n", __func__, np->full_name);
+	dev_dbg(dev, "%s for node %pO\n", __func__, np);
 	i2c_del_adapter(&std->adap);
 
 	return 0;
@@ -1595,7 +1595,7 @@ static int selftest_i2c_dev_probe(struct i2c_client *client,
 		return -EINVAL;
 	}
 
-	dev_dbg(dev, "%s for node @%s\n", __func__, np->full_name);
+	dev_dbg(dev, "%s for node %pO\n", __func__, np);
 
 	return 0;
 };
@@ -1605,7 +1605,7 @@ static int selftest_i2c_dev_remove(struct i2c_client *client)
 	struct device *dev = &client->dev;
 	struct device_node *np = client->dev.of_node;
 
-	dev_dbg(dev, "%s for node @%s\n", __func__, np->full_name);
+	dev_dbg(dev, "%s for node %pO\n", __func__, np);
 	return 0;
 }
 
@@ -1647,7 +1647,7 @@ static int selftest_i2c_mux_probe(struct i2c_client *client,
 	struct selftest_i2c_mux_data *stm;
 	u32 reg, max_reg;
 
-	dev_dbg(dev, "%s for node @%s\n", __func__, np->full_name);
+	dev_dbg(dev, "%s for node %pO\n", __func__, np);
 
 	if (!np) {
 		dev_err(dev, "No OF node\n");
@@ -1698,7 +1698,7 @@ static int selftest_i2c_mux_remove(struct i2c_client *client)
 	struct selftest_i2c_mux_data *stm = i2c_get_clientdata(client);
 	int i;
 
-	dev_dbg(dev, "%s for node @%s\n", __func__, np->full_name);
+	dev_dbg(dev, "%s for node %pO\n", __func__, np);
 	for (i = stm->nchans - 1; i >= 0; i--)
 		i2c_del_mux_adapter(stm->adap[i]);
 	return 0;
