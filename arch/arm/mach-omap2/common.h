@@ -164,6 +164,14 @@ static inline void am33xx_restart(enum reboot_mode mode, const char *cmd)
 }
 #endif
 
+#ifdef CONFIG_SOC_AM33XX
+void am33xx_dt_quirk(void);
+#else
+static inline void am33xx_dt_quirk(void)
+{
+}
+#endif
+
 #ifdef CONFIG_ARCH_OMAP3
 void omap3xxx_restart(enum reboot_mode mode, const char *cmd);
 #else

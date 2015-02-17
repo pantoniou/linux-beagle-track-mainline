@@ -258,6 +258,11 @@ obj-$(CONFIG_MACH_TOUCHBOOK)		+= board-omap3touchbook.o
 
 obj-$(CONFIG_MACH_SBC3530)		+= board-omap3stalker.o
 
+# DT quirks
+ifneq ($(CONFIG_OF_DYNAMIC),)
+obj-$(CONFIG_SOC_AM33XX)		+= am33xx-dt-quirks.o
+endif
+
 # Platform specific device init code
 
 omap-flash-$(CONFIG_MTD_NAND_OMAP2)	:= board-flash.o

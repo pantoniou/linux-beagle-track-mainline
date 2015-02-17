@@ -1,0 +1,82 @@
+am33xx Beaglebone White/Black Device Tree Bindings
+--------------------------------------------------
+
+Beaglebone boards that boot with a common device tree blob contain
+a DT quirk entry with the following properties:
+
+Required properties:
+
+- compatible : should be "ti,am33xx-bone-quirk"
+
+Required child node:
+
+- revs : Contains children nodes that identify boards
+
+  Each child node of revs must be of the following form:
+
+  Required properties:
+
+  - board-id : Contain the board ID as it appears in the EEPROM
+  - board-apply : Should contain the phandle of the quirk to apply
+
+  Optional child node:
+
+  - options : Contain a number of properties that identify options
+  that can be enabled or disabled by external means. For Linux the
+  options are selected by parsing the boot command line.
+  The properties contain a tupple of quirk phandles, the first containing
+  the enable quirk and the second the disable quirk. If the phandle is zero
+  then no quirk is applied.
+
+Any other nodes (like the quirk definitions are ignored).
+
+The following example defines two revisions (white/black) with
+board-id A335BONE for the white and A335BNLT for the black.
+For the beaglebone black we also define two options
+no-emmc and no-hdmi which when are present in the boot command line
+the emmc and hdmi are disabled.
+
+	beaglebone-quirks {
+		compatible = "ti,am33xx-bone-quirk";
+		status = "okay";
+
+		revs {
+			white {
+				board-id = "A335BONE";
+				board-apply = <&bonewhite>;
+			};
+			black {
+				board-id = "A335BNLT";
+				board-apply = <&boneblack>;
+				options {
+					no-emmc = <0 &black_enable_emmc>;
+					no-hdmi = <0 &black_enable_hdmi>;
+				};
+			};
+		};
+
+		overlays {
+			bonewhite: bonewhite {
+				/* quirk for white */
+				...
+			};
+
+			boneblack: boneblack {
+				/* quirk for black */
+				...
+			};
+
+			black_enable_hdmi: black_hdmi {
+				/* quirk to enable hdmi */
+				...
+			};
+
+			black_enable_emmc: black_emmc {
+				/* quirk to enable emmc */
+				...
+			};
+		};
+	};
+
+
+
