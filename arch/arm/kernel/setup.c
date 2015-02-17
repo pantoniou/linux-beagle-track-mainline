@@ -931,6 +931,9 @@ void __init setup_arch(char **cmdline_p)
 
 	unflatten_device_tree();
 
+	if (mdesc->dt_quirk)
+		mdesc->dt_quirk();
+
 	arm_dt_init_cpu_maps();
 	psci_init();
 #ifdef CONFIG_SMP
