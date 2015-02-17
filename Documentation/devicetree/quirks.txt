@@ -1,0 +1,101 @@
+A Device Tree quirk is the way which allows modification of the
+boot device tree under the control of a per-platform specific method.
+
+Take for instance the case of a board family that comprises of a
+number of different board revisions, all being incremental changes
+after an initial release.
+
+Since all board revisions must be supported via a single software image
+the only way to support this scheme is by having a different DTB for each
+revision with the bootloader selecting which one to use at boot time.
+
+While this may in theory work, in practice it is very cumbersome
+for the following reasons:
+
+1. The act of selecting a different boot device tree blob requires
+a reasonably advanced bootloader with some kind of configuration or
+scripting capabilities. Sadly this is not the case many times, the
+bootloader is extremely dumb and can only use a single dt blob.
+
+2. On many instances boot time is extremely critical; in some cases
+there are hard requirements like having working video feeds in under
+2 seconds from power-up. This leaves an extremely small time budget for
+boot-up, as low as 500ms to kernel entry. The sanest way to get there
+is by removing the standard bootloader from the normal boot sequence
+altogether by having a very small boot shim that loads the kernel and
+immediately jumps to kernel, like falcon-boot mode in u-boot does.
+
+3. Having different DTBs/DTSs for different board revisions easily leads to
+drift between versions. Since no developer is expected to have every single
+board revision at hand, things are easy to get out of sync, with board versions
+failing to boot even though the kernel is up to date.
+
+4. One final problem is the static way that device tree works.
+For example it might be desirable for various boards to have a way to
+selectively configure the boot device tree, possibly by the use of command
+line options.  For instance a device might be disabled if a given command line
+option is present, different configuration to various devices for debugging
+purposes can be selected and so on. Currently the only way to do so is by
+recompiling the DTS and installing, which is an chore for developers and
+a completely unreasonable expectation from end-users.
+
+Device Tree quirks solve all those problems by having an in-kernel interface
+which per-board/platform method can use to selectively modify the device tree
+right after unflattening.
+
+A DT quirk is a subtree of the boot DT that can be applied to
+a target in the base DT resulting in a modification of the live
+tree. The format of the quirk nodes is that of a device tree overlay.
+
+As an example the following DTS contains a quirk.
+
+/ {
+	foo: foo-node {
+		bar = <10>;
+	};
+
+	select-quirk = <&quirk>;
+
+	quirk: quirk {
+		fragment@0 {
+			target = <&foo>;
+			__overlay {
+				bar = <0xf00>;
+				baz = <11>;
+			};
+		};
+	};
+};
+
+The quirk when applied would result at the following tree:
+
+/ {
+	foo: foo-node {
+		bar = <0xf00>;
+		baz = <11>;
+	};
+
+	select-quirk = <&quirk>;
+
+	quirk: quirk {
+		fragment@0 {
+			target = <&foo>;
+			__overlay {
+				bar = <0xf00>;
+				baz = <11>;
+			};
+		};
+	};
+
+};
+
+The two public method used to accomplish this are of_quirk_apply_by_node()
+and of_quirk_apply_by_phandle();
+
+To apply the quirk, a per-platform method can retrieve the phandle from the
+select-quirk property and pass it to the of_quirk_apply_by_phandle() node.
+
+The method which the per-platform method is using to select the quirk to apply
+is out of the scope of the DT quirk definition, but possible methods include
+and are not limited to: revision encoding in a GPIO input range, board id
+located in external or internal EEPROM or flash, DMI board ids, etc.

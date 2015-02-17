@@ -1075,4 +1075,20 @@ static inline int of_overlay_destroy_all(void)
 
 #endif
 
+/* early boot quirks */
+#ifdef CONFIG_OF_DYNAMIC
+int of_quirk_apply_by_node(struct device_node *dn);
+int of_quirk_apply_by_phandle(phandle ph);
+#else
+static inline int of_quirk_apply_by_node(struct device_node *dn)
+{
+	return -ENOTSUPP;
+}
+
+int of_quirk_apply_by_phandle(phandle ph)
+{
+	return -ENOTSUPP;
+}
+#endif
+
 #endif /* _LINUX_OF_H */

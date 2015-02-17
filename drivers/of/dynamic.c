@@ -7,6 +7,7 @@
  */
 
 #include <linux/of.h>
+#include <linux/of_fdt.h>
 #include <linux/spinlock.h>
 #include <linux/slab.h>
 #include <linux/string.h>
@@ -778,4 +779,361 @@ int of_changeset_action(struct of_changeset *ocs, unsigned long action,
 	/* add it to the list */
 	list_add_tail(&ce->node, &ocs->entries);
 	return 0;
+}
+
+/* fixup a symbol entry for a quirk if it exists */
+static int quirk_fixup_symbol(struct device_node *dns, struct device_node *dnp)
+{
+	struct device_node *dn;
+	struct property *prop;
+	const char *names, *namep;
+	int lens, lenp;
+	char *p;
+
+	dn = of_find_node_by_path("/__symbols__");
+	if (!dn)
+		return 0;
+
+	names = of_node_full_name(dns);
+	lens = strlen(names);
+	namep = of_node_full_name(dnp);
+	lenp = strlen(namep);
+	for_each_property_of_node(dn, prop) {
+		/* be very concervative at matching */
+		if (lens == (prop->length - 1) &&
+			((const char *)prop->value)[prop->length] == '\0' &&
+			strcmp(prop->value, names) == 0)
+			break;
+	}
+	if (prop == NULL)
+		return 0;
+	p = early_init_dt_alloc_memory_arch(lenp + 1, __alignof__(char));
+	if (!p) {
+		pr_err("%s: symbol fixup %s failed\n", __func__, prop->name);
+		return -ENOMEM;
+	}
+	strcpy(p, namep);
+
+	pr_debug("%s: symbol fixup %s: %s -> %s\n", __func__,
+			prop->name, names, namep);
+
+	prop->value = p;
+	prop->length = lenp + 1;
+
+	return 0;
+}
+
+/* create a new quirk node */
+static struct device_node *new_quirk_node(
+		struct device_node *dns,
+		struct device_node *dnt,
+		const char *name)
+{
+	struct device_node *dnp;
+	int dnlen, len, ret;
+	struct property **pp, *prop;
+	char *p;
+
+	dnlen = strlen(dnt->full_name);
+	len = dnlen + 1 + strlen(name) + 1;
+	dnp = early_init_dt_alloc_memory_arch(
+			sizeof(struct device_node) + len,
+			__alignof__(struct device_node));
+	if (dnp == NULL) {
+		pr_err("%s: allocation failure at %pO\n", __func__,
+				dns);
+		return NULL;
+	}
+	memset(dnp, 0, sizeof(*dnp));
+	of_node_init(dnp);
+	p = (char *)dnp + sizeof(*dnp);
+
+	/* build full name */
+	dnp->full_name = p;
+	memcpy(p, dnt->full_name, dnlen);
+	p += dnlen;
+	if (dnlen != 1)
+		*p++ = '/';
+	strcpy(p, name);
+
+	dnp->parent = dnt;
+
+	/* we now move the phandle properties */
+	for (pp = &dns->properties; (prop = *pp) != NULL; ) {
+
+		/* do not touch normal properties */
+		if (strcmp(prop->name, "name") &&
+		    strcmp(prop->name, "phandle") &&
+		    strcmp(prop->name, "linux,phandle") &&
+		    strcmp(prop->name, "ibm,phandle")) {
+			pp = &(*pp)->next;
+			continue;
+		}
+
+		/* move to the new node */
+		*pp = prop->next;
+		/* don't advance */
+
+		prop->next = dnp->properties;
+		dnp->properties = prop;
+
+		if ((strcmp(prop->name, "phandle") == 0 ||
+		    strcmp(prop->name, "linux,phandle") == 0 ||
+		    strcmp(prop->name, "ibm,phandle") == 0) &&
+				dnp->phandle == 0) {
+			dnp->phandle = be32_to_cpup(prop->value);
+			/* remove the phandle from the source */
+			dns->phandle = 0;
+		}
+	}
+
+	dnp->name = of_get_property(dnp, "name", NULL);
+	dnp->type = of_get_property(dnp, "device_type", NULL);
+	if (!dnp->name)
+		dnp->name = "<NULL>";
+	if (!dnp->type)
+		dnp->type = "<NULL>";
+
+	ret = quirk_fixup_symbol(dns, dnp);
+	if (ret != 0)
+		pr_warn("%s: Failed to fixup symbol %pO\n", __func__, dnp);
+
+	return dnp;
+}
+
+/* apply a quirk fragment node recursively */
+static int of_apply_quirk_fragment_node(struct device_node *dn,
+		struct device_node *dnt)
+{
+	struct property *prop, *tprop, **pp;
+	struct device_node *dnp, **dnpp, *child;
+	const char *name, *namet;
+	int i, ret;
+
+	if (!dn || !dnt)
+		return -EINVAL;
+
+	/* iterate over all properties */
+	for (pp = &dn->properties; (prop = *pp) != NULL; pp = &prop->next) {
+
+		/* do not touch auto-generated properties */
+		if (!strcmp(prop->name, "name") ||
+		    !strcmp(prop->name, "phandle") ||
+		    !strcmp(prop->name, "linux,phandle") ||
+		    !strcmp(prop->name, "ibm,phandle") ||
+		    !strcmp(prop->name, "__remove_property__") ||
+		    !strcmp(prop->name, "__remove_node__"))
+			continue;
+
+		pr_debug("%s: change property %s from %pO to %pO\n",
+				__func__, prop->name, dn, dnt);
+
+		tprop = of_find_property(dnt, prop->name, NULL);
+		if (tprop) {
+			tprop->value = prop->value;
+			tprop->length = prop->length;
+			continue;
+		}
+		tprop = early_init_dt_alloc_memory_arch(
+				sizeof(struct property),
+				__alignof__(struct property));
+		if (!tprop) {
+			pr_err("%s: allocation failure at %pO\n", __func__,
+					dn);
+			return -ENOMEM;
+		}
+		tprop->name = prop->name;
+		tprop->value = prop->value;
+		tprop->length = prop->length;
+
+		/* link */
+		tprop->next = dnt->properties;
+		dnt->properties = tprop;
+	}
+
+	/* now handle property removals (if any) */
+	for (i = 0; of_property_read_string_index(dn, "__remove_property__",
+				i, &name) == 0; i++) {
+
+		/* remove property directly (we don't care about dead props) */
+		for (pp = &dnt->properties; (prop = *pp) != NULL;
+				pp = &prop->next) {
+			if (!strcmp(prop->name, name)) {
+				*pp = prop->next;
+				pr_info("%s: remove property %s at %pO\n",
+					__func__, name, dnt);
+				break;
+			}
+		}
+	}
+
+	/* now handle node removals (if any) */
+	for (i = 0; of_property_read_string_index(dn, "__remove_node__",
+				i, &name) == 0; i++) {
+
+		/* remove node directly (we don't care about dead props) */
+		for (dnpp = &dnt->child; (dnp = *dnpp) != NULL;
+				dnpp = &dnp->sibling) {
+
+			/* find path component */
+			namet = strrchr(dnp->full_name, '/');
+			if (!namet)	/* root */
+				namet = dnp->full_name;
+			else
+				namet++;
+			if (!strcmp(namet, name)) {
+				*dnpp = dnp->sibling;
+				pr_info("%s: remove node %s at %pO\n",
+					__func__, namet, dnt);
+				break;
+			}
+		}
+	}
+
+	/* now iterate over childen */
+	for_each_child_of_node(dn, child) {
+		/* locate path component */
+		name = strrchr(child->full_name, '/');
+		if (name == NULL)	/* root? */
+			name = child->full_name;
+		else
+			name++;
+
+		/* find node (if it exists) */
+		for (dnpp = &dnt->child; (dnp = *dnpp) != NULL;
+				dnpp = &dnp->sibling) {
+
+			namet = strrchr(dnp->full_name, '/');
+			if (!namet)	/* root */
+				namet = dnp->full_name;
+			else
+				namet++;
+
+			if (!strcmp(namet, name))
+				break;
+		}
+
+		/* not found, create node */
+		if (dnp == NULL) {
+			dnp = new_quirk_node(child, dnt, name);
+			if (dnp == NULL) {
+				pr_err("%s: allocation failure at %pO\n",
+						__func__, dn);
+				of_node_put(child);
+				return -ENOMEM;
+			}
+			dnp->sibling = *dnpp;
+			*dnpp = dnp;
+
+			pr_debug("%s: new node %pO\n", __func__, dnp);
+		}
+		pr_debug("%s: recursing %pO\n", __func__, dnp);
+
+		ret = of_apply_quirk_fragment_node(child, dnp);
+		if (ret != 0) {
+			of_node_put(child);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+/* apply a single quirk fragment located at dn */
+static int of_apply_single_quirk_fragment(struct device_node *dn)
+{
+	struct device_node *dnt, *dno;
+	const char *path;
+	u32 val;
+	int ret;
+
+	/* first try to go by using the target as a phandle */
+	dno = NULL;
+	dnt = NULL;
+	ret = of_property_read_u32(dn, "target", &val);
+	if (ret == 0)
+		dnt = of_find_node_by_phandle(val);
+
+	if (dnt == NULL) {
+		/* now try to locate by path */
+		ret = of_property_read_string(dn, "target-path",
+				&path);
+		if (ret == 0)
+			dnt = of_find_node_by_path(path);
+	}
+
+	if (dnt == NULL) {
+		pr_err("%s: Failed to find target for node %pO\n",
+				__func__, dn);
+		ret = -ENODEV;
+		goto out;
+	}
+
+	pr_debug("%s: Found target at %pO\n", __func__, dnt);
+	dno = of_get_child_by_name(dn, "__overlay__");
+	if (!dno) {
+		pr_err("%s: Failed to find overlay node %pO\n", __func__, dn);
+		ret = -ENODEV;
+		goto out;
+	}
+
+	ret = of_apply_quirk_fragment_node(dno, dnt);
+out:
+	of_node_put(dno);
+	of_node_put(dnt);
+
+	return ret;
+}
+
+/**
+ * of_quirk_apply_by_node - Apply a DT quirk found at the given node
+ *
+ * @dn:		device node pointer to the quirk
+ *
+ * Returns 0 on success, a negative error value in case of an error.
+ */
+int of_quirk_apply_by_node(struct device_node *dn)
+{
+	struct device_node *child;
+	int ret;
+
+	if (!dn)
+		return -ENODEV;
+
+	pr_debug("Apply quirk at %pO\n", dn);
+
+	ret = 0;
+	for_each_child_of_node(dn, child) {
+		ret = of_apply_single_quirk_fragment(child);
+		if (ret != 0) {
+			of_node_put(child);
+			break;
+		}
+	}
+
+	return ret;
+}
+
+/**
+ * of_quirk_apply_by_node - Apply a DT quirk found by the given phandle
+ *
+ * ph:		phandle of the quirk node
+ *
+ * Returns 0 on success, a negative error value in case of an error.
+ */
+int of_quirk_apply_by_phandle(phandle ph)
+{
+	struct device_node *dn;
+	int ret;
+
+	dn = of_find_node_by_phandle(ph);
+	if (!dn) {
+		pr_err("Failed to find node with phandle %u\n", ph);
+		return -ENODEV;
+	}
+
+	ret = of_quirk_apply_by_node(dn);
+	of_node_put(dn);
+
+	return ret;
 }
