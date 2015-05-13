@@ -2494,13 +2494,13 @@ W:	https://linuxtv.org
 S:	Supported
 F:	drivers/media/platform/sti/bdisp
 
-DELTA ST MEDIA DRIVER
-M:	Hugues Fruchet <hugues.fruchet@st.com>
-L:	linux-media@vger.kernel.org
-T:	git git://linuxtv.org/media_tree.git
-W:	https://linuxtv.org
-S:	Supported
-F:	drivers/media/platform/sti/delta
+BEAGLEBONE CAPEMANAGER
+M:	Pantelis Antoniou <pantelis.antoniou@konsulko.com>
+S:	Maintained
+F:	drivers/misc/beaglebone-capemgr.c
+F:	Documentation/misc-devices/bone_capemgr.txt
+F:	Documentation/devicetree/bindings/misc/bone_capemgr.txt
+F:	Documentation/ABI/testing/sysfs-devices-platform-bone_capemgr
 
 BEFS FILE SYSTEM
 M:	Luis de Bethencourt <luisbg@osg.samsung.com>
