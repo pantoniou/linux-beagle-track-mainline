@@ -124,6 +124,15 @@ config PCIE_IPROC
 	  iProc family of SoCs. An appropriate bus interface driver needs
 	  to be enabled to select this.
 
+config PCIE_IPROC_MSI
+	bool "Broadcom iProc PCIe MSI support"
+	depends on ARCH_BCM_IPROC && PCI_MSI
+	select PCI_MSI_IRQ_DOMAIN
+	default ARCH_BCM_IPROC
+	help
+	  Say Y here if you want to enable MSI support for Broadcom's iProc
+	  PCIe controller
+
 config PCIE_IPROC_PLATFORM
 	tristate "Broadcom iProc PCIe platform bus driver"
 	depends on ARCH_BCM_IPROC || (ARM && COMPILE_TEST)
