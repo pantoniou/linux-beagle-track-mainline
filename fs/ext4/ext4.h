@@ -617,6 +617,9 @@ enum {
 #define EXT4_IOC_SET_ENCRYPTION_POLICY	_IOR('f', 19, struct ext4_encryption_policy)
 #define EXT4_IOC_GET_ENCRYPTION_PWSALT	_IOW('f', 20, __u8[16])
 #define EXT4_IOC_GET_ENCRYPTION_POLICY	_IOW('f', 21, struct ext4_encryption_policy)
+#define EXT4_IOC_GET_ENCRYPTION_METADATA _IOWR('f', 22, struct ext4_encrypted_metadata)
+#define EXT4_IOC_SET_ENCRYPTION_METADATA _IOR('f', 23, struct ext4_encrypted_metadata)
+#define EXT4_IOC_GET_ENCRYPTED_FILENAME	_IOWR('f', 24, struct ext4_encrypted_metadata)
 
 #if defined(__KERNEL__) && defined(CONFIG_COMPAT)
 /*
@@ -2311,6 +2314,10 @@ static inline void ext4_fname_free_filename(struct ext4_filename *fname) { }
 void ext4_free_crypt_info(struct ext4_crypt_info *ci);
 void ext4_free_encryption_info(struct inode *inode, struct ext4_crypt_info *ci);
 int _ext4_get_encryption_info(struct inode *inode);
+int ext4_set_encryption_metadata(struct inode *inode,
+				 struct ext4_encrypted_metadata *mdata);
+int ext4_get_encryption_metadata(struct inode *inode,
+				 struct ext4_encrypted_metadata *mdata);
 
 #ifdef CONFIG_EXT4_FS_ENCRYPTION
 int ext4_has_encryption_key(struct inode *inode);
@@ -2546,6 +2553,8 @@ extern int ext4_generic_delete_entry(handle_t *handle,
 				     int buf_size,
 				     int csum_size);
 extern int ext4_empty_dir(struct inode *inode);
+extern int ext4_get_encrypted_filename(struct file *filp,
+				       struct ext4_encrypted_metadata *mdata);
 
 /* resize.c */
 extern int ext4_group_add(struct super_block *sb,

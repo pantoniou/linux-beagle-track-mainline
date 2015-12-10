@@ -14,7 +14,7 @@
 #include <linux/scatterlist.h>
 #include <uapi/linux/keyctl.h>
 
-#include "ext4.h"
+#include "ext4_jbd2.h"
 #include "xattr.h"
 
 static void derive_crypt_complete(struct crypto_async_request *req, int rc)
@@ -269,4 +269,59 @@ int ext4_has_encryption_key(struct inode *inode)
 	struct ext4_inode_info *ei = EXT4_I(inode);
 
 	return (ei->i_crypt_info != NULL);
+}
+
+int ext4_get_encryption_metadata(struct inode *inode,
+				 struct ext4_encrypted_metadata *mdata)
+{
+	int res;
+
+	if (mdata->len < sizeof(struct ext4_encryption_context))
+		return -EINVAL;
+
+	res = ext4_xattr_get(inode, EXT4_XATTR_INDEX_ENCRYPTION,
+			     EXT4_XATTR_NAME_ENCRYPTION_CONTEXT,
+			     &mdata->metadata, mdata->len);
+	if (res < 0)
+		return res;
+	mdata->len = res;
+	return 0;
+}
+
+int ext4_set_encryption_metadata(struct inode *inode,
+				 struct ext4_encrypted_metadata *mdata)
+{
+	struct ext4_encryption_context *ctx;
+	handle_t *handle;
+	int res;
+
+	if (mdata->len != sizeof(struct ext4_encryption_context))
+		return -EINVAL;
+	ctx = (struct ext4_encryption_context *) &mdata->metadata;
+	if (ctx->format != EXT4_ENCRYPTION_CONTEXT_FORMAT_V1)
+		return -EINVAL;
+
+	res = ext4_convert_inline_data(inode);
+	if (res)
+		return res;
+
+	handle = ext4_journal_start(inode, EXT4_HT_MISC,
+				    ext4_jbd2_credits_xattr(inode));
+	if (IS_ERR(handle))
+		return PTR_ERR(handle);
+	res = ext4_xattr_set(inode, EXT4_XATTR_INDEX_ENCRYPTION,
+			     EXT4_XATTR_NAME_ENCRYPTION_CONTEXT, ctx,
+			     sizeof(struct ext4_encryption_context), 0);
+	if (res < 0)
+		goto errout;
+	ext4_set_inode_flag(inode, EXT4_INODE_ENCRYPT);
+	ext4_clear_inode_state(inode, EXT4_STATE_MAY_INLINE_DATA);
+	res = ext4_mark_inode_dirty(handle, inode);
+	if (res)
+		EXT4_ERROR_INODE(inode, "Failed to mark inode dirty");
+	else
+		res = ext4_get_encryption_info(inode);
+errout:
+	ext4_journal_stop(handle);
+	return res;
 }
