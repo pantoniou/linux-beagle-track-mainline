@@ -1033,6 +1033,49 @@ void ext4_clear_inode(struct inode *inode)
 #endif
 }
 
+/*
+ * Create a copy of the inode structure so when we are reading the
+ * last block of an encrypted inode using direct I/O to get the
+ * ciphertext, we can futz with the i_size in the shadow inode.  This
+ * is necessary so that we can make a copy of the full AES block when
+ * i_size is not a multiple of the AES block size.
+ */
+struct inode *ext4_alloc_shadow_inode(struct inode *inode)
+{
+	struct ext4_inode_info *shadow_ei, *ei = EXT4_I(inode);
+	struct inode *shadow;
+
+	shadow_ei = kmem_cache_alloc(ext4_inode_cachep, GFP_NOFS);
+	if (!shadow_ei)
+		return NULL;
+
+	memcpy(shadow_ei, ei, sizeof(struct ext4_inode_info));
+	shadow = &shadow_ei->vfs_inode;
+
+	init_rwsem(&shadow_ei->xattr_sem);
+	init_rwsem(&shadow_ei->i_data_sem);
+	init_rwsem(&shadow_ei->i_mmap_sem);
+	i_size_ordered_init(shadow);
+	mutex_init(&shadow->i_mutex);
+	spin_lock_init(&shadow_ei->i_raw_lock);
+	spin_lock_init(&shadow_ei->i_prealloc_lock);
+	spin_lock_init(&(shadow_ei->i_block_reservation_lock));
+	spin_lock_init(&shadow_ei->i_completed_io_lock);
+	rwlock_init(&shadow_ei->i_es_lock);
+	ext4_es_init_tree(&shadow_ei->i_es_tree);
+	INIT_LIST_HEAD(&shadow_ei->i_es_list);
+	shadow_ei->i_es_all_nr = 0;
+	shadow_ei->i_es_shk_nr = 0;
+
+	return shadow;
+}
+
+void ext4_free_shadow_inode(struct inode *shadow)
+{
+	ext4_es_remove_extent(shadow, 0, EXT_MAX_BLOCKS);
+	kmem_cache_free(ext4_inode_cachep, EXT4_I(shadow));
+}
+
 static struct inode *ext4_nfs_get_inode(struct super_block *sb,
 					u64 ino, u32 generation)
 {
@@ -1182,6 +1225,7 @@ enum {
 	Opt_journal_path, Opt_journal_checksum, Opt_journal_async_commit,
 	Opt_abort, Opt_data_journal, Opt_data_ordered, Opt_data_writeback,
 	Opt_data_err_abort, Opt_data_err_ignore, Opt_test_dummy_encryption,
+	Opt_ciphertext_access, Opt_nociphertext_access,
 	Opt_usrjquota, Opt_grpjquota, Opt_offusrjquota, Opt_offgrpjquota,
 	Opt_jqfmt_vfsold, Opt_jqfmt_vfsv0, Opt_jqfmt_vfsv1, Opt_quota,
 	Opt_noquota, Opt_barrier, Opt_nobarrier, Opt_err,
@@ -1273,6 +1317,8 @@ static const match_table_t tokens = {
 	{Opt_noinit_itable, "noinit_itable"},
 	{Opt_max_dir_size_kb, "max_dir_size_kb=%u"},
 	{Opt_test_dummy_encryption, "test_dummy_encryption"},
+	{Opt_ciphertext_access, "ciphertext_access"},
+	{Opt_nociphertext_access, "nociphertext_access"},
 	{Opt_removed, "check=none"},	/* mount option from ext2/3 */
 	{Opt_removed, "nocheck"},	/* mount option from ext2/3 */
 	{Opt_removed, "reservation"},	/* mount option from ext2/3 */
@@ -1475,6 +1521,8 @@ static const struct mount_opts {
 	{Opt_jqfmt_vfsv1, QFMT_VFS_V1, MOPT_QFMT},
 	{Opt_max_dir_size_kb, 0, MOPT_GTE0},
 	{Opt_test_dummy_encryption, 0, MOPT_GTE0},
+	{Opt_ciphertext_access, EXT4_MOUNT_CIPHERTEXT_ACCESS, MOPT_SET},
+	{Opt_nociphertext_access, EXT4_MOUNT_CIPHERTEXT_ACCESS, MOPT_CLEAR},
 	{Opt_err, 0, 0}
 };
 
