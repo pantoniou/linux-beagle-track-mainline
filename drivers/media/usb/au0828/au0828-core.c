@@ -458,7 +458,9 @@ static int au0828_usb_probe(struct usb_interface *interface,
 		goto done;
 	}
 
+#ifdef CONFIG_MEDIA_CONTROLLER
 	retval = media_device_register(dev->media_dev);
+#endif
 
 done:
 	if (retval < 0)
