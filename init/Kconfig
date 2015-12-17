@@ -938,6 +938,8 @@ menuconfig CGROUPS
 
 	  Say N if unsure.
 
+if CGROUPS
+
 config INTEL_RDT
 	bool "Intel Resource Director Technology support"
 	depends on X86_64 && CPU_SUP_INTEL
@@ -949,8 +951,6 @@ config INTEL_RDT
 	  into which an application can fill.
 
 	  Say N if unsure.
-
-if CGROUPS
 
 config CGROUP_DEBUG
 	bool "Example debug cgroup subsystem"

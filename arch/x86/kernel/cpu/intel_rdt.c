@@ -53,10 +53,16 @@ static cpumask_t tmp_cpumask;
 static DEFINE_MUTEX(rdt_group_mutex);
 struct static_key __read_mostly rdt_enable_key = STATIC_KEY_INIT_FALSE;
 
+static struct intel_rdt rdt_root_group;
+#define rdt_for_each_child(pos_css, parent_ir)		\
+	css_for_each_child((pos_css), &(parent_ir)->css)
+
 struct rdt_remote_data {
 	int msr;
 	u64 val;
 };
+
+static DEFINE_SPINLOCK(closid_lock);
 
 /*
  * cache_alloc_hsw_probe() - Have to probe for Intel haswell server CPUs
@@ -108,17 +114,18 @@ static inline bool cache_alloc_supported(struct cpuinfo_x86 *c)
 	return false;
 }
 
-
 void __intel_rdt_sched_in(void *dummy)
 {
 	struct intel_pqr_state *state = this_cpu_ptr(&pqr_state);
-	u32 closid = current->closid;
+	struct intel_rdt *ir = task_rdt(current);
 
-	if (closid == state->closid)
+	if (ir->closid == state->closid)
 		return;
 
-	wrmsr(MSR_IA32_PQR_ASSOC, state->rmid, closid);
-	state->closid = closid;
+	spin_lock(&closid_lock);
+	wrmsr(MSR_IA32_PQR_ASSOC, state->rmid, ir->closid);
+	spin_unlock(&closid_lock);
+	state->closid = ir->closid;
 }
 
 /*
@@ -359,15 +366,176 @@ static int intel_rdt_cpu_notifier(struct notifier_block *nb,
 	return NOTIFY_OK;
 }
 
+static struct cgroup_subsys_state *
+intel_rdt_css_alloc(struct cgroup_subsys_state *parent_css)
+{
+	struct intel_rdt *parent = css_rdt(parent_css);
+	struct intel_rdt *ir;
+
+	/*
+	 * cgroup_init cannot handle failures gracefully.
+	 * Return rdt_root_group.css instead of failure
+	 * always even when Cache allocation is not supported.
+	 */
+	if (!parent)
+		return &rdt_root_group.css;
+
+	ir = kzalloc(sizeof(struct intel_rdt), GFP_KERNEL);
+	if (!ir)
+		return ERR_PTR(-ENOMEM);
+
+	mutex_lock(&rdt_group_mutex);
+	ir->closid = parent->closid;
+	closid_get(ir->closid);
+	mutex_unlock(&rdt_group_mutex);
+
+	return &ir->css;
+}
+
+static void intel_rdt_css_free(struct cgroup_subsys_state *css)
+{
+	struct intel_rdt *ir = css_rdt(css);
+
+	mutex_lock(&rdt_group_mutex);
+	closid_put(ir->closid);
+	kfree(ir);
+	mutex_unlock(&rdt_group_mutex);
+}
+
+static int intel_cache_alloc_cbm_read(struct seq_file *m, void *v)
+{
+	struct intel_rdt *ir = css_rdt(seq_css(m));
+	unsigned long l3_cbm = 0;
+
+	clos_cbm_table_read(ir->closid, &l3_cbm);
+	seq_printf(m, "%08lx\n", l3_cbm);
+
+	return 0;
+}
+
+static int cbm_validate_rdt_cgroup(struct intel_rdt *ir, unsigned long cbmvalue)
+{
+	struct cgroup_subsys_state *css;
+	struct intel_rdt *par, *c;
+	unsigned long cbm_tmp = 0;
+	int err = 0;
+
+	if (!cbm_validate(cbmvalue)) {
+		err = -EINVAL;
+		goto out_err;
+	}
+
+	par = parent_rdt(ir);
+	clos_cbm_table_read(par->closid, &cbm_tmp);
+	if (!bitmap_subset(&cbmvalue, &cbm_tmp, MAX_CBM_LENGTH)) {
+		err = -EINVAL;
+		goto out_err;
+	}
+
+	rcu_read_lock();
+	rdt_for_each_child(css, ir) {
+		c = css_rdt(css);
+		clos_cbm_table_read(par->closid, &cbm_tmp);
+		if (!bitmap_subset(&cbm_tmp, &cbmvalue, MAX_CBM_LENGTH)) {
+			rcu_read_unlock();
+			err = -EINVAL;
+			goto out_err;
+		}
+	}
+	rcu_read_unlock();
+out_err:
+
+	return err;
+}
+
+/*
+ * intel_cache_alloc_cbm_write() - Validates and writes the
+ * cache bit mask(cbm) to the IA32_L3_MASK_n
+ * and also store the same in the cctable.
+ *
+ * CLOSids are reused for cgroups which have same bitmask.
+ * This helps to use the scant CLOSids optimally. This also
+ * implies that at context switch write to PQR-MSR is done
+ * only when a task with a different bitmask is scheduled in.
+ */
+static int intel_cache_alloc_cbm_write(struct cgroup_subsys_state *css,
+				 struct cftype *cft, u64 cbmvalue)
+{
+	struct intel_rdt *ir = css_rdt(css);
+	unsigned long ccbm = 0;
+	int err = 0;
+	u32 closid;
+
+	if (ir == &rdt_root_group)
+		return -EPERM;
+
+	/*
+	 * Need global mutex as cbm write may allocate a closid.
+	 */
+	mutex_lock(&rdt_group_mutex);
+
+	clos_cbm_table_read(ir->closid, &ccbm);
+	if (cbmvalue == ccbm)
+		goto out;
+
+	err = cbm_validate_rdt_cgroup(ir, cbmvalue);
+	if (err)
+		goto out;
+
+	/*
+	 * Try to get a reference for a different CLOSid and release the
+	 * reference to the current CLOSid.
+	 * Need to put down the reference here and get it back in case we
+	 * run out of closids. Otherwise we run into a problem when
+	 * we could be using the last closid that could have been available.
+	 */
+	closid_put(ir->closid);
+	if (cbm_search(cbmvalue, &closid)) {
+		spin_lock(&closid_lock);
+		ir->closid = closid;
+		spin_unlock(&closid_lock);
+		closid_get(closid);
+	} else {
+		err = closid_alloc(&ir->closid);
+		if (err) {
+			closid_get(ir->closid);
+			goto out;
+		}
+
+		clos_cbm_table_update(ir->closid, cbmvalue);
+		msr_update_all(CBM_FROM_INDEX(ir->closid), cbmvalue);
+	}
+	closid_tasks_sync();
+	closcbm_map_dump();
+out:
+	mutex_unlock(&rdt_group_mutex);
+
+	return err;
+}
+
+static void rdt_cgroup_init(void)
+{
+	int max_cbm_len = boot_cpu_data.x86_cache_max_cbm_len;
+	u32 closid;
+
+	closid_alloc(&closid);
+
+	WARN_ON(closid != 0);
+
+	rdt_root_group.closid = closid;
+	clos_cbm_table_update(closid, (1ULL << max_cbm_len) - 1);
+}
+
 static int __init intel_rdt_late_init(void)
 {
 	struct cpuinfo_x86 *c = &boot_cpu_data;
 	u32 maxid, max_cbm_len;
 	int err = 0, size, i;
 
-	if (!cache_alloc_supported(c))
+	if (!cache_alloc_supported(c)) {
+		static_branch_disable(&intel_rdt_cgrp_subsys_enabled_key);
 		return -ENODEV;
-
+	}
 	maxid = c->x86_cache_max_closid;
 	max_cbm_len = c->x86_cache_max_cbm_len;
 
@@ -394,6 +562,7 @@ static int __init intel_rdt_late_init(void)
 	__hotcpu_notifier(intel_rdt_cpu_notifier, 0);
 
 	cpu_notifier_register_done();
+	rdt_cgroup_init();
 
 	static_key_slow_inc(&rdt_enable_key);
 	pr_info("Intel cache allocation enabled\n");
@@ -403,3 +572,19 @@ out_err:
 }
 
 late_initcall(intel_rdt_late_init);
+
+static struct cftype rdt_files[] = {
+	{
+		.name		= "l3_cbm",
+		.seq_show	= intel_cache_alloc_cbm_read,
+		.write_u64	= intel_cache_alloc_cbm_write,
+	},
+	{ }	/* terminate */
+};
+
+struct cgroup_subsys intel_rdt_cgrp_subsys = {
+	.css_alloc		= intel_rdt_css_alloc,
+	.css_free		= intel_rdt_css_free,
+	.legacy_cftypes		= rdt_files,
+	.early_init		= 0,
+};
