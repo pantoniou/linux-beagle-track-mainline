@@ -24,6 +24,7 @@
 
 #include <linux/slab.h>
 #include <linux/err.h>
+#include <linux/cpu.h>
 #include <linux/sched.h>
 #include <asm/pqr_common.h>
 #include <asm/intel_rdt.h>
@@ -234,6 +235,75 @@ static inline bool rdt_cpumask_update(int cpu)
 	return false;
 }
 
+/*
+ * cbm_update_msrs() - Updates all the existing IA32_L3_MASK_n MSRs
+ * which are one per CLOSid on the current package.
+ */
+static void cbm_update_msrs(void *dummy)
+{
+	int maxid = boot_cpu_data.x86_cache_max_closid;
+	struct rdt_remote_data info;
+	unsigned int i;
+
+	for (i = 0; i < maxid; i++) {
+		if (cctable[i].clos_refcnt) {
+			info.msr = CBM_FROM_INDEX(i);
+			info.val = cctable[i].l3_cbm;
+			msr_cpu_update(&info);
+		}
+	}
+}
+
+static inline void intel_rdt_cpu_start(int cpu)
+{
+	struct intel_pqr_state *state = &per_cpu(pqr_state, cpu);
+
+	state->closid = 0;
+	mutex_lock(&rdt_group_mutex);
+	if (rdt_cpumask_update(cpu))
+		smp_call_function_single(cpu, cbm_update_msrs, NULL, 1);
+	mutex_unlock(&rdt_group_mutex);
+}
+
+static void intel_rdt_cpu_exit(unsigned int cpu)
+{
+	int i;
+
+	mutex_lock(&rdt_group_mutex);
+	if (!cpumask_test_and_clear_cpu(cpu, &rdt_cpumask)) {
+		mutex_unlock(&rdt_group_mutex);
+		return;
+	}
+
+	cpumask_and(&tmp_cpumask, topology_core_cpumask(cpu), cpu_online_mask);
+	cpumask_clear_cpu(cpu, &tmp_cpumask);
+	i = cpumask_any(&tmp_cpumask);
+
+	if (i < nr_cpu_ids)
+		cpumask_set_cpu(i, &rdt_cpumask);
+	mutex_unlock(&rdt_group_mutex);
+}
+
+static int intel_rdt_cpu_notifier(struct notifier_block *nb,
+				  unsigned long action, void *hcpu)
+{
+	unsigned int cpu  = (unsigned long)hcpu;
+
+	switch (action) {
+	case CPU_DOWN_FAILED:
+	case CPU_ONLINE:
+		intel_rdt_cpu_start(cpu);
+		break;
+	case CPU_DOWN_PREPARE:
+		intel_rdt_cpu_exit(cpu);
+		break;
+	default:
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+
 static int __init intel_rdt_late_init(void)
 {
 	struct cpuinfo_x86 *c = &boot_cpu_data;
@@ -261,8 +331,14 @@ static int __init intel_rdt_late_init(void)
 		goto out_err;
 	}
 
+	cpu_notifier_register_begin();
+
 	for_each_online_cpu(i)
 		rdt_cpumask_update(i);
+
+	__hotcpu_notifier(intel_rdt_cpu_notifier, 0);
+
+	cpu_notifier_register_done();
 
 	static_key_slow_inc(&rdt_enable_key);
 	pr_info("Intel cache allocation enabled\n");
