@@ -24,6 +24,8 @@
 
 #include <linux/slab.h>
 #include <linux/err.h>
+#include <linux/sched.h>
+#include <asm/pqr_common.h>
 #include <asm/intel_rdt.h>
 
 /*
@@ -44,11 +46,32 @@ static cpumask_t rdt_cpumask;
  */
 static cpumask_t tmp_cpumask;
 static DEFINE_MUTEX(rdt_group_mutex);
+struct static_key __read_mostly rdt_enable_key = STATIC_KEY_INIT_FALSE;
 
 struct rdt_remote_data {
 	int msr;
 	u64 val;
 };
+
+void __intel_rdt_sched_in(void *dummy)
+{
+	struct intel_pqr_state *state = this_cpu_ptr(&pqr_state);
+	u32 closid = current->closid;
+
+	if (closid == state->closid)
+		return;
+
+	wrmsr(MSR_IA32_PQR_ASSOC, state->rmid, closid);
+	state->closid = closid;
+}
+
+/*
+ * Synchronize the IA32_PQR_ASSOC MSR of all currently running tasks.
+ */
+static inline void closid_tasks_sync(void)
+{
+	on_each_cpu_mask(cpu_online_mask, __intel_rdt_sched_in, NULL, 1);
+}
 
 static inline void closid_get(u32 closid)
 {
@@ -240,6 +263,8 @@ static int __init intel_rdt_late_init(void)
 
 	for_each_online_cpu(i)
 		rdt_cpumask_update(i);
+
+	static_key_slow_inc(&rdt_enable_key);
 	pr_info("Intel cache allocation enabled\n");
 out_err:
 
