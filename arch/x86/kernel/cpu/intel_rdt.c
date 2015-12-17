@@ -34,7 +34,21 @@ static struct clos_cbm_table *cctable;
  * closid availability bit map.
  */
 unsigned long *closmap;
+/*
+ * Mask of CPUs for writing CBM values. We only need one CPU per-socket.
+ */
+static cpumask_t rdt_cpumask;
+/*
+ * Temporary cpumask used during hot cpu notificaiton handling. The usage
+ * is serialized by hot cpu locks.
+ */
+static cpumask_t tmp_cpumask;
 static DEFINE_MUTEX(rdt_group_mutex);
+
+struct rdt_remote_data {
+	int msr;
+	u64 val;
+};
 
 static inline void closid_get(u32 closid)
 {
@@ -82,11 +96,126 @@ static void closid_put(u32 closid)
 		closid_free(closid);
 }
 
+static bool cbm_validate(unsigned long var)
+{
+	u32 max_cbm_len = boot_cpu_data.x86_cache_max_cbm_len;
+	unsigned long first_bit, zero_bit;
+	u64 max_cbm;
+
+	if (bitmap_weight(&var, max_cbm_len) < 1)
+		return false;
+
+	max_cbm = (1ULL << max_cbm_len) - 1;
+	if (var & ~max_cbm)
+		return false;
+
+	first_bit = find_first_bit(&var, max_cbm_len);
+	zero_bit = find_next_zero_bit(&var, max_cbm_len, first_bit);
+
+	if (find_next_bit(&var, max_cbm_len, zero_bit) < max_cbm_len)
+		return false;
+
+	return true;
+}
+
+static int clos_cbm_table_read(u32 closid, unsigned long *l3_cbm)
+{
+	u32 maxid = boot_cpu_data.x86_cache_max_closid;
+
+	lockdep_assert_held(&rdt_group_mutex);
+
+	if (closid >= maxid)
+		return -EINVAL;
+
+	*l3_cbm = cctable[closid].l3_cbm;
+
+	return 0;
+}
+
+/*
+ * clos_cbm_table_update() - Update a clos cbm table entry.
+ * @closid: the closid whose cbm needs to be updated
+ * @cbm: the new cbm value that has to be updated
+ *
+ * This assumes the cbm is validated as per the interface requirements
+ * and the cache allocation requirements(through the cbm_validate).
+ */
+static int clos_cbm_table_update(u32 closid, unsigned long cbm)
+{
+	u32 maxid = boot_cpu_data.x86_cache_max_closid;
+
+	lockdep_assert_held(&rdt_group_mutex);
+
+	if (closid >= maxid)
+		return -EINVAL;
+
+	cctable[closid].l3_cbm = cbm;
+
+	return 0;
+}
+
+static bool cbm_search(unsigned long cbm, u32 *closid)
+{
+	u32 maxid = boot_cpu_data.x86_cache_max_closid;
+	u32 i;
+
+	for (i = 0; i < maxid; i++) {
+		if (cctable[i].clos_refcnt &&
+		    bitmap_equal(&cbm, &cctable[i].l3_cbm, MAX_CBM_LENGTH)) {
+			*closid = i;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static void closcbm_map_dump(void)
+{
+	u32 i;
+
+	pr_debug("CBMMAP\n");
+	for (i = 0; i < boot_cpu_data.x86_cache_max_closid; i++) {
+		pr_debug("l3_cbm: 0x%x,clos_refcnt: %u\n",
+		 (unsigned int)cctable[i].l3_cbm, cctable[i].clos_refcnt);
+	}
+}
+
+static void msr_cpu_update(void *arg)
+{
+	struct rdt_remote_data *info = arg;
+
+	wrmsrl(info->msr, info->val);
+}
+
+/*
+ * msr_update_all() - Update the msr for all packages.
+ */
+static inline void msr_update_all(int msr, u64 val)
+{
+	struct rdt_remote_data info;
+
+	info.msr = msr;
+	info.val = val;
+	on_each_cpu_mask(&rdt_cpumask, msr_cpu_update, &info, 1);
+}
+
+static inline bool rdt_cpumask_update(int cpu)
+{
+	cpumask_and(&tmp_cpumask, &rdt_cpumask, topology_core_cpumask(cpu));
+	if (cpumask_empty(&tmp_cpumask)) {
+		cpumask_set_cpu(cpu, &rdt_cpumask);
+		return true;
+	}
+
+	return false;
+}
+
 static int __init intel_rdt_late_init(void)
 {
 	struct cpuinfo_x86 *c = &boot_cpu_data;
 	u32 maxid, max_cbm_len;
-	int err = 0, size;
+	int err = 0, size, i;
 
 	if (!cpu_has(c, X86_FEATURE_CAT_L3))
 		return -ENODEV;
@@ -109,6 +238,8 @@ static int __init intel_rdt_late_init(void)
 		goto out_err;
 	}
 
+	for_each_online_cpu(i)
+		rdt_cpumask_update(i);
 	pr_info("Intel cache allocation enabled\n");
 out_err:
 
