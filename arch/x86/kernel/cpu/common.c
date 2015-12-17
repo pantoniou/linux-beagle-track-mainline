@@ -653,6 +653,21 @@ void get_cpu_cap(struct cpuinfo_x86 *c)
 		}
 	}
 
+	/* Additional Intel-defined flags: level 0x00000010 */
+	if (c->cpuid_level >= 0x00000010) {
+		u32 eax, ebx, ecx, edx;
+
+		cpuid_count(0x00000010, 0, &eax, &ebx, &ecx, &edx);
+		c->x86_capability[14] = ebx;
+
+		if (cpu_has(c, X86_FEATURE_CAT_L3)) {
+
+			cpuid_count(0x00000010, 1, &eax, &ebx, &ecx, &edx);
+			c->x86_cache_max_closid = edx + 1;
+			c->x86_cache_max_cbm_len = eax + 1;
+		}
+	}
+
 	/* AMD-defined flags: level 0x80000001 */
 	xlvl = cpuid_eax(0x80000000);
 	c->extended_cpuid_level = xlvl;
