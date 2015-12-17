@@ -47,6 +47,20 @@ static inline void virtio_wmb(bool weak_barriers)
 		wmb();
 }
 
+static inline void virtio_store_mb(bool weak_barriers,
+				   __virtio16 *p, __virtio16 v)
+{
+#ifdef CONFIG_SMP
+	if (weak_barriers)
+		smp_store_mb(*p, v);
+	else
+#endif
+	{
+		WRITE_ONCE(*p, v);
+		mb();
+	}
+}
+
 static inline __virtio16 virtio_load_acquire(bool weak_barriers, __virtio16 *p)
 {
 	if (!weak_barriers) {
