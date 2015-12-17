@@ -62,6 +62,12 @@ static LIST_HEAD(cache_groups);
  */
 static cpumask_t cqm_cpumask;
 
+/*
+ * Temporary cpumask used during hot cpu notificaiton handling. The usage
+ * is serialized by hot cpu locks.
+ */
+static cpumask_t tmp_cpumask;
+
 #define RMID_VAL_ERROR		(1ULL << 63)
 #define RMID_VAL_UNAVAIL	(1ULL << 62)
 
@@ -1244,15 +1250,13 @@ static struct pmu intel_cqm_pmu = {
 
 static inline void cqm_pick_event_reader(int cpu)
 {
-	int phys_id = topology_physical_package_id(cpu);
-	int i;
+	cpumask_and(&tmp_cpumask, &cqm_cpumask, topology_core_cpumask(cpu));
 
-	for_each_cpu(i, &cqm_cpumask) {
-		if (phys_id == topology_physical_package_id(i))
-			return;	/* already got reader for this socket */
-	}
-
-	cpumask_set_cpu(cpu, &cqm_cpumask);
+	/*
+	 * Pick a reader if there isn't one already.
+	 */
+	if (cpumask_empty(&tmp_cpumask))
+		cpumask_set_cpu(cpu, &cqm_cpumask);
 }
 
 static void intel_cqm_cpu_starting(unsigned int cpu)
@@ -1270,7 +1274,6 @@ static void intel_cqm_cpu_starting(unsigned int cpu)
 
 static void intel_cqm_cpu_exit(unsigned int cpu)
 {
-	int phys_id = topology_physical_package_id(cpu);
 	int i;
 
 	/*
@@ -1279,15 +1282,12 @@ static void intel_cqm_cpu_exit(unsigned int cpu)
 	if (!cpumask_test_and_clear_cpu(cpu, &cqm_cpumask))
 		return;
 
-	for_each_online_cpu(i) {
-		if (i == cpu)
-			continue;
+	cpumask_and(&tmp_cpumask, topology_core_cpumask(cpu), cpu_online_mask);
+	cpumask_clear_cpu(cpu, &tmp_cpumask);
+	i = cpumask_any(&tmp_cpumask);
 
-		if (phys_id == topology_physical_package_id(i)) {
-			cpumask_set_cpu(i, &cqm_cpumask);
-			break;
-		}
-	}
+	if (i < nr_cpu_ids)
+		cpumask_set_cpu(i, &cqm_cpumask);
 }
 
 static int intel_cqm_cpu_notifier(struct notifier_block *nb,
