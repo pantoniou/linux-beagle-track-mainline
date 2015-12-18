@@ -275,6 +275,7 @@ static inline unsigned long pte_pfn(pte_t pte)
 extern pgprot_t set_remote_cache_cpu(pgprot_t prot, int cpu);
 extern int get_remote_cache_cpu(pgprot_t prot);
 
+#define pfn_pte pfn_pte
 static inline pte_t pfn_pte(unsigned long pfn, pgprot_t prot)
 {
 	return hv_pte_set_pa(prot, PFN_PHYS(pfn));
