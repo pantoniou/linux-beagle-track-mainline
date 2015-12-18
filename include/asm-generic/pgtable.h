@@ -616,6 +616,10 @@ static inline int pmd_trans_huge(pmd_t pmd)
 {
 	return 0;
 }
+static inline int pmd_devmap(pmd_t pmd)
+{
+	return 0;
+}
 #ifndef __HAVE_ARCH_PMD_WRITE
 static inline int pmd_write(pmd_t pmd)
 {

@@ -1944,6 +1944,10 @@ static inline void pgtable_pmd_page_dtor(struct page *page) {}
 #define pte_devmap(x) (0)
 #endif
 
+#ifndef pmd_devmap
+#define pmd_devmap(x) (0)
+#endif
+
 static inline spinlock_t *pmd_lock(struct mm_struct *mm, pmd_t *pmd)
 {
 	spinlock_t *ptl = pmd_lockptr(mm, pmd);
