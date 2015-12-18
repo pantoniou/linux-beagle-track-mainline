@@ -90,6 +90,18 @@ extern int overcommit_kbytes_handler(struct ctl_table *, int, void __user *,
 /* test whether an address (unsigned long or pointer) is aligned to PAGE_SIZE */
 #define PAGE_ALIGNED(addr)	IS_ALIGNED((unsigned long)addr, PAGE_SIZE)
 
+#ifndef PHYSICAL_PAGE_MASK
+/*
+ * Cast *PAGE_MASK to a signed type so that it is sign-extended if
+ * virtual addresses are 32-bits but physical addresses are larger (ie,
+ * 32-bit PAE).
+ *
+ * An arch may redefine this to mask out values outside the max
+ * address-width of the cpu.
+ */
+#define PHYSICAL_PAGE_MASK ((signed long) PAGE_MASK)
+#endif
+
 /*
  * Linux kernel virtual memory manager primitives.
  * The idea being to have a "virtual" mm in the same way
