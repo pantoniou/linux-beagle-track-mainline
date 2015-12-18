@@ -689,20 +689,89 @@ static inline enum zone_type page_zonenum(const struct page *page)
 struct resource;
 struct device;
 /**
+ * struct vmem_altmap - pre-allocated storage for vmemmap_populate
+ * @base_pfn: base of the entire dev_pagemap mapping
+ * @reserve: pages mapped, but reserved for driver use (relative to @base)
+ * @free: free pages set aside in the mapping for memmap storage
+ * @align: pages reserved to meet allocation alignments
+ * @alloc: track pages consumed, private to vmemmap_populate()
+ */
+struct vmem_altmap {
+	const unsigned long base_pfn;
+	const unsigned long reserve;
+	unsigned long free;
+	unsigned long align;
+	unsigned long alloc;
+};
+
+static inline unsigned long vmem_altmap_nr_free(struct vmem_altmap *altmap)
+{
+	unsigned long allocated = altmap->alloc + altmap->align;
+
+	if (altmap->free > allocated)
+		return altmap->free - allocated;
+	return 0;
+}
+
+static inline unsigned long vmem_altmap_offset(struct vmem_altmap *altmap)
+{
+	/* number of pfns from base where pfn_to_page() is valid */
+	return altmap->reserve + altmap->free;
+}
+
+static inline unsigned long vmem_altmap_next_pfn(struct vmem_altmap *altmap)
+{
+	return altmap->base_pfn + altmap->reserve + altmap->alloc
+		+ altmap->align;
+}
+
+/**
+ * vmem_altmap_alloc - allocate pages from the vmem_altmap reservation
+ * @altmap - reserved page pool for the allocation
+ * @nr_pfns - size (in pages) of the allocation
+ *
+ * Allocations are aligned to the size of the request
+ */
+static inline unsigned long vmem_altmap_alloc(struct vmem_altmap *altmap,
+		unsigned long nr_pfns)
+{
+	unsigned long pfn = vmem_altmap_next_pfn(altmap);
+	unsigned long nr_align;
+
+	nr_align = 1UL << find_first_bit(&nr_pfns, BITS_PER_LONG);
+	nr_align = ALIGN(pfn, nr_align) - pfn;
+
+	if (nr_pfns + nr_align > vmem_altmap_nr_free(altmap))
+		return ULONG_MAX;
+	altmap->alloc += nr_pfns;
+	altmap->align += nr_align;
+	return pfn + nr_align;
+}
+
+static inline void vmem_altmap_free(struct vmem_altmap *altmap,
+		unsigned long nr_pfns)
+{
+	altmap->alloc -= nr_pfns;
+}
+
+/**
  * struct dev_pagemap - metadata for ZONE_DEVICE mappings
+ * @altmap: pre-allocated/reserved memory for vmemmap allocations
  * @dev: host device of the mapping for debug
  */
 struct dev_pagemap {
-	/* TODO: vmem_altmap and percpu_ref count */
+	struct vmem_altmap *altmap;
+	const struct resource *res;
 	struct device *dev;
 };
 
 #ifdef CONFIG_ZONE_DEVICE
-void *devm_memremap_pages(struct device *dev, struct resource *res);
+void *devm_memremap_pages(struct device *dev, struct resource *res,
+		struct vmem_altmap *altmap);
 struct dev_pagemap *find_dev_pagemap(resource_size_t phys);
 #else
 static inline void *devm_memremap_pages(struct device *dev,
-		struct resource *res)
+		struct resource *res, struct vmem_altmap *altmap)
 {
 	/*
 	 * Fail attempts to call devm_memremap_pages() without
@@ -714,6 +783,15 @@ static inline void *devm_memremap_pages(struct device *dev,
 }
 
 static inline struct dev_pagemap *find_dev_pagemap(resource_size_t phys)
+{
+	return NULL;
+}
+#endif
+
+#if defined(CONFIG_SPARSEMEM_VMEMMAP) && defined(CONFIG_ZONE_DEVICE)
+struct vmem_altmap *to_vmem_altmap(unsigned long memmap_start);
+#else
+static inline struct vmem_altmap *to_vmem_altmap(unsigned long memmap_start)
 {
 	return NULL;
 }
@@ -2320,7 +2398,13 @@ pud_t *vmemmap_pud_populate(pgd_t *pgd, unsigned long addr, int node);
 pmd_t *vmemmap_pmd_populate(pud_t *pud, unsigned long addr, int node);
 pte_t *vmemmap_pte_populate(pmd_t *pmd, unsigned long addr, int node);
 void *vmemmap_alloc_block(unsigned long size, int node);
-void *vmemmap_alloc_block_buf(unsigned long size, int node);
+void *__vmemmap_alloc_block_buf(unsigned long size, int node,
+		struct vmem_altmap *altmap);
+static inline void *vmemmap_alloc_block_buf(unsigned long size, int node)
+{
+	return __vmemmap_alloc_block_buf(size, node, NULL);
+}
+
 void vmemmap_verify(pte_t *, int, unsigned long, unsigned long);
 int vmemmap_populate_basepages(unsigned long start, unsigned long end,
 			       int node);
