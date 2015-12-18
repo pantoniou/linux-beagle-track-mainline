@@ -386,7 +386,7 @@ static int fault_1d(struct drm_gem_object *obj,
 			pfn, pfn << PAGE_SHIFT);
 
 	return vm_insert_mixed(vma, (unsigned long)vmf->virtual_address,
-			pfn_to_pfn_t(pfn, PFN_DEV));
+			__pfn_to_pfn_t(pfn, PFN_DEV));
 }
 
 /* Special handling for the case of faulting in 2d tiled buffers */
@@ -480,7 +480,7 @@ static int fault_2d(struct drm_gem_object *obj,
 
 	for (i = n; i > 0; i--) {
 		vm_insert_mixed(vma, (unsigned long)vaddr,
-				pfn_to_pfn_t(pfn, PFN_DEV));
+				__pfn_to_pfn_t(pfn, PFN_DEV));
 		pfn += usergart[fmt].stride_pfn;
 		vaddr += PAGE_SIZE * m;
 	}
