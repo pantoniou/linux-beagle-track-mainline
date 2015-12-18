@@ -147,6 +147,12 @@ void devm_memunmap(struct device *dev, void *addr)
 }
 EXPORT_SYMBOL(devm_memunmap);
 
+pfn_t phys_to_pfn_t(dma_addr_t addr, unsigned long flags)
+{
+	return __pfn_to_pfn_t(addr >> PAGE_SHIFT, flags);
+}
+EXPORT_SYMBOL(phys_to_pfn_t);
+
 #ifdef CONFIG_ZONE_DEVICE
 struct page_map {
 	struct resource res;
