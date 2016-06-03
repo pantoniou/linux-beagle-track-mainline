@@ -180,7 +180,7 @@ static unsigned int etraxfs_gpio_chip_to_port(struct gpio_chip *gc)
 }
 
 static int etraxfs_gpio_of_xlate(struct gpio_chip *gc,
-			       const struct of_phandle_args *gpiospec,
+			       struct of_phandle_args *gpiospec,
 			       u32 *flags)
 {
 	/*

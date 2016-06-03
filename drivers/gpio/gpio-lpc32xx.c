@@ -491,7 +491,7 @@ static struct lpc32xx_gpio_chip lpc32xx_gpiochip[] = {
 };
 
 static int lpc32xx_of_xlate(struct gpio_chip *gc,
-			    const struct of_phandle_args *gpiospec, u32 *flags)
+			    struct of_phandle_args *gpiospec, u32 *flags)
 {
 	/* Is this the correct bank? */
 	u32 bank = gpiospec->args[0];

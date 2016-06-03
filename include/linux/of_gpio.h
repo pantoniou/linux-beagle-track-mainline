@@ -63,7 +63,7 @@ static inline int of_mm_gpiochip_add(struct device_node *np,
 extern void of_mm_gpiochip_remove(struct of_mm_gpio_chip *mm_gc);
 
 extern int of_gpio_simple_xlate(struct gpio_chip *gc,
-				const struct of_phandle_args *gpiospec,
+				struct of_phandle_args *gpiospec,
 				u32 *flags);
 
 #else /* CONFIG_OF_GPIO */

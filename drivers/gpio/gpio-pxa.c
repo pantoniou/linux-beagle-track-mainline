@@ -317,7 +317,7 @@ static void pxa_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
 
 #ifdef CONFIG_OF_GPIO
 static int pxa_gpio_of_xlate(struct gpio_chip *gc,
-			     const struct of_phandle_args *gpiospec,
+			     struct of_phandle_args *gpiospec,
 			     u32 *flags)
 {
 	if (gpiospec->args[0] > pxa_last_gpio)

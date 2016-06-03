@@ -281,7 +281,7 @@ static int of_gpiochip_scan_gpios(struct gpio_chip *chip)
  * is less than ngpios (that is specified in the gpio_chip).
  */
 int of_gpio_simple_xlate(struct gpio_chip *gc,
-			 const struct of_phandle_args *gpiospec, u32 *flags)
+			 struct of_phandle_args *gpiospec, u32 *flags)
 {
 	/*
 	 * We're discouraging gpio_cells < 2, since that way you'll have to

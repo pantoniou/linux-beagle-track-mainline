@@ -302,7 +302,7 @@ static int brcmstb_gpio_remove(struct platform_device *pdev)
 }
 
 static int brcmstb_gpio_of_xlate(struct gpio_chip *gc,
-		const struct of_phandle_args *gpiospec, u32 *flags)
+		struct of_phandle_args *gpiospec, u32 *flags)
 {
 	struct brcmstb_gpio_priv *priv = brcmstb_gpio_gc_to_priv(gc);
 	struct brcmstb_gpio_bank *bank = gpiochip_get_data(gc);

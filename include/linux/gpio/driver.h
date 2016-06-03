@@ -183,7 +183,7 @@ struct gpio_chip {
 	struct device_node *of_node;
 	int of_gpio_n_cells;
 	int (*of_xlate)(struct gpio_chip *gc,
-			const struct of_phandle_args *gpiospec, u32 *flags);
+			struct of_phandle_args *gpiospec, u32 *flags);
 #endif
 };
 
